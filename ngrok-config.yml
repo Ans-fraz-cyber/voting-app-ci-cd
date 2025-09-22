@@ -1,0 +1,11 @@
+version: "2"
+authtoken: 32rnua6V7k2rriSIrgz1NUk9FTC_2Cbpmk6kNgMez4Mu9ugu9
+tunnels:
+  vote:
+    addr: 5000
+    proto: http
+    host_header: "localhost:5000"
+  result:
+    addr: 5001
+    proto: http
+    host_header: "localhost:5001"
