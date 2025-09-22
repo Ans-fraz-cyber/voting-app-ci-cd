@@ -9,6 +9,17 @@ pipeline {
             }
         }
         
+        stage('🛑 Cleanup Previous Deployment') {
+            steps {
+                sh '''
+                    echo "Stopping any existing containers..."
+                    docker stop vote result worker redis db || true
+                    docker rm vote result worker redis db || true
+                    echo "✅ Cleanup completed"
+                '''
+            }
+        }
+        
         stage('🏗️ Build Images') {
             steps {
                 sh '''
@@ -21,16 +32,17 @@ pipeline {
             }
         }
         
-        stage('🚀 Deploy') {
+        stage('🚀 Deploy Application') {
             steps {
                 sh '''
-                    echo "Deploying application..."
-                    docker stop vote result worker redis db || true
-                    docker rm vote result worker redis db || true
+                    echo "Deploying voting application..."
                     
+                    # Start database services first
                     docker run -d --name redis redis:alpine
                     docker run -d --name db -e POSTGRES_PASSWORD=postgres postgres:15-alpine
-                    sleep 10
+                    sleep 15  # Wait for DB to be ready
+                    
+                    # Start application services
                     docker run -d --name worker --link redis --link db voting-app-worker
                     docker run -d --name vote -p 5000:80 --link redis -e OPTION_A=Cats -e OPTION_B=Dogs voting-app-vote
                     docker run -d --name result -p 5001:80 --link db voting-app-result
@@ -43,17 +55,21 @@ pipeline {
         stage('❤️ Health Check') {
             steps {
                 sh '''
-                    echo "Waiting for services to start..."
-                    sleep 30
+                    echo "Waiting for services to stabilize..."
+                    sleep 20
                     
-                    # Simple container checks instead of curl
-                    docker ps --filter "name=vote" --format "table {{.Names}}\t{{.Status}}" | grep -q vote && echo "✅ Vote service running"
-                    docker ps --filter "name=result" --format "table {{.Names}}\t{{.Status}}" | grep -q result && echo "✅ Result service running"
-                    docker ps --filter "name=worker" --format "table {{.Names}}\t{{.Status}}" | grep -q worker && echo "✅ Worker service running"
-                    docker ps --filter "name=redis" --format "table {{.Names}}\t{{.Status}}" | grep -q redis && echo "✅ Redis running"
-                    docker ps --filter "name=db" --format "table {{.Names}}\t{{.Status}}" | grep -q db && echo "✅ PostgreSQL running"
+                    # Check container status
+                    echo "=== Container Status ==="
+                    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
                     
-                    echo "🎉 HEALTH CHECKS PASSED!"
+                    # Simple health checks
+                    if docker ps | grep -q vote; then echo "✅ Vote service running"; else exit 1; fi
+                    if docker ps | grep -q result; then echo "✅ Result service running"; else exit 1; fi
+                    if docker ps | grep -q worker; then echo "✅ Worker service running"; else exit 1; fi
+                    if docker ps | grep -q redis; then echo "✅ Redis running"; else exit 1; fi
+                    if docker ps | grep -q db; then echo "✅ PostgreSQL running"; else exit 1; fi
+                    
+                    echo "🎉 ALL HEALTH CHECKS PASSED!"
                     echo "🌐 Application URLs:"
                     echo "   Vote: http://localhost:5000"
                     echo "   Results: http://localhost:5001"
@@ -65,6 +81,19 @@ pipeline {
     post {
         success {
             echo "✅ Pipeline executed successfully!"
+            sh '''
+                echo "=== Final Container Status ==="
+                docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            '''
+        }
+        failure {
+            echo "❌ Pipeline failed - check logs above"
+            sh '''
+                echo "=== Debug Info ==="
+                docker ps -a
+                echo "Port 5000 status:"
+                netstat -tulpn | grep 5000 || echo "Port 5000 free"
+            '''
         }
     }
 }
