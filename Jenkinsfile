@@ -88,12 +88,6 @@ pipeline {
         }
         failure {
             echo "❌ Pipeline failed - check logs above"
-            sh '''
-                echo "=== Debug Info ==="
-                docker ps -a
-                echo "Port 5000 status:"
-                netstat -tulpn | grep 5000 || echo "Port 5000 free"
-            '''
         }
     }
 }
