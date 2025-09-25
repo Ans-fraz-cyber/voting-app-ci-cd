@@ -9,8 +9,14 @@ pipeline {
         }
         stage('2. Code Quality Scan') { 
             steps { 
-                sh 'echo "Stage 2: SonarQube analysis running..."'
-                sh 'echo "Token: sqa_8cf00cc4ae6cede80c8511ffe6457f52322d4065"'
+                sh '''
+                    echo "Running SonarQube analysis..."
+                    sonar-scanner \
+                    -Dsonar.projectKey=voting-app \
+                    -Dsonar.sources=. \
+                    -Dsonar.host.url=http://localhost:4000 \
+                    -Dsonar.login=sqa_8cf00cc4ae6cede80c8511ffe6457f52322d4065
+                '''
             } 
         }
         stage('3. Build Docker Images') {
@@ -54,7 +60,7 @@ pipeline {
                 sh 'echo "Stage 7: Final verification..."'
                 sh 'sleep 15'
                 sh 'docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"'
-                sh 'echo "🎉 7-STAGE PIPELINE COMPLETED SUCCESSFULLY!"'
+                sh 'echo " 7-STAGE PIPELINE COMPLETED SUCCESSFULLY!"'
             }
         }
     }
