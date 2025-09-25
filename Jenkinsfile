@@ -10,16 +10,14 @@ pipeline {
         stage('2. Code Quality Scan') { 
     steps { 
         sh '''
-            echo "Running SonarQube analysis with Docker..."
-            docker run --rm \
-            -v $(pwd):/usr/src \
-            -w /usr/src \
-            sonarsource/sonar-scanner-cli:latest \
-            sonar-scanner \
+            echo "Running SonarQube analysis with local scanner..."
+            
+            # Use the sonar-scanner you installed
+            /opt/sonar-scanner/bin/sonar-scanner \
             -Dsonar.projectKey=voting-app \
-            -Dsonar.sources=. \
-            -Dsonar.inclusions=**/*.py,**/*.js,**/*.cs,**/*.html \
-            -Dsonar.coverage.exclusions=**/test/**,**/node_modules/**,**/*.spec.js \
+            -Dsonar.projectName="Voting Application" \
+            -Dsonar.sources=vote,result,worker \
+            -Dsonar.sourceEncoding=UTF-8 \
             -Dsonar.host.url=http://192.168.18.63:9000 \
             -Dsonar.login=sqa_8cf00cc4ae6cede80c8511ffe6457f52322d4065
         '''
