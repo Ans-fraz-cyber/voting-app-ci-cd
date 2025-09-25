@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     tools {
-        sonarRunner 'SonarQubeScanner'  // ← Correct tool name
+        hudson.plugins.sonar.SonarRunnerInstallation 'SonarQubeScanner'  // ← Exact name from error message
     }
 
     environment {
