@@ -11,25 +11,17 @@ pipeline {
             steps { 
                 sh '''
                     echo "=== SONARQUBE ANALYSIS ==="
+                    echo "Using direct parameters (no properties file)"
                     
-                    # Create the properties file CORRECTLY
-                    cat > sonar-project.properties << EOL
-sonar.projectKey=voting-app
-sonar.projectName=Voting Application
-sonar.sources=vote,result,worker
-sonar.sourceEncoding=UTF-8
-EOL
-
-                    echo "=== Properties file content ==="
-                    cat sonar-project.properties
-                    
-                    echo "=== Running SonarQube Scan ==="
                     docker run --rm \
                     -v $(pwd):/usr/src \
                     -w /usr/src \
                     sonarsource/sonar-scanner-cli:latest \
                     sonar-scanner \
-                    -Dproject.settings=sonar-project.properties \
+                    -Dsonar.projectKey=voting-app \
+                    -Dsonar.projectName="Voting Application" \
+                    -Dsonar.sources=. \
+                    -Dsonar.sourceEncoding=UTF-8 \
                     -Dsonar.host.url=http://192.168.18.63:9000 \
                     -Dsonar.login=sqa_8cf00cc4ae6cede80c8511ffe6457f52322d4065
                 '''
@@ -76,14 +68,8 @@ EOL
                 sh 'echo "Stage 7: Final verification..."'
                 sh 'sleep 15'
                 sh 'docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"'
-                sh 'echo " 7-STAGE PIPELINE COMPLETED SUCCESSFULLY!"'
+                sh 'echo "🎉 7-STAGE PIPELINE COMPLETED SUCCESSFULLY!"'
             }
-        }
-    }
-    
-    post {
-        always {
-            sh 'echo "Pipeline completed - check SonarQube dashboard for results"'
         }
     }
 }
