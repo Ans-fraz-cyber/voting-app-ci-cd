@@ -11,18 +11,13 @@ pipeline {
     steps { 
         sh '''
             echo "Running SonarQube analysis with Docker..."
-            echo "Checking current directory structure:"
-            pwd
-            ls -la
-            echo "Checking if vote, result, worker directories exist:"
-            ls -la vote/ result/ worker/
             docker run --rm \
             -v $(pwd):/usr/src \
             -w /usr/src \
             sonarsource/sonar-scanner-cli:latest \
             sonar-scanner \
             -Dsonar.projectKey=voting-app \
-            -Dsonar.sources=vote,result,worker \
+            -Dsonar.sources=. \
             -Dsonar.host.url=http://192.168.18.63:9000 \
             -Dsonar.login=sqa_8cf00cc4ae6cede80c8511ffe6457f52322d4065
         '''
