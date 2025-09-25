@@ -18,6 +18,8 @@ pipeline {
             sonar-scanner \
             -Dsonar.projectKey=voting-app \
             -Dsonar.sources=. \
+            -Dsonar.inclusions=**/*.py,**/*.js,**/*.cs,**/*.html \
+            -Dsonar.coverage.exclusions=**/test/**,**/node_modules/**,**/*.spec.js \
             -Dsonar.host.url=http://192.168.18.63:9000 \
             -Dsonar.login=sqa_8cf00cc4ae6cede80c8511ffe6457f52322d4065
         '''
