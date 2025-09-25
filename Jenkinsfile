@@ -11,6 +11,11 @@ pipeline {
     steps { 
         sh '''
             echo "Running SonarQube analysis with Docker..."
+            echo "Checking current directory structure:"
+            pwd
+            ls -la
+            echo "Checking if vote, result, worker directories exist:"
+            ls -la vote/ result/ worker/
             docker run --rm \
             -v $(pwd):/usr/src \
             -w /usr/src \
