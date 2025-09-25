@@ -10,43 +10,20 @@ pipeline {
         stage('2. Code Quality Scan') { 
     steps { 
         sh '''
-            echo "Running SonarQube analysis with proper configuration..."
-            
-            # Create sonar-project.properties
-            cat > sonar-project.properties << 'EOL'
-sonar.projectKey=voting-app
-sonar.projectName=Voting Application
-sonar.projectVersion=1.0
-
-# Scan all source directories
-sonar.sources=vote,result,worker
-
-# Language specific settings
-sonar.language=py,js,cs
-
-# Include all relevant files
-sonar.inclusions=**/*.py,**/*.js,**/*.cs,**/*.html,**/*.json,**/*.xml
-
-# Exclude unnecessary files
-sonar.exclusions=**/node_modules/**,**/__pycache__/**,**/*.pyc,**/bin/**,**/obj/**
-
-sonar.sourceEncoding=UTF-8
-EOL
-
-            echo "Configuration file content:"
-            cat sonar-project.properties
-            
-            # Run the analysis
+            echo "Running SonarQube analysis..."
+            # Use absolute path and proper permissions
             docker run --rm \
-            -v $(pwd):/usr/src \
+            -v /var/jenkins_home/workspace/voting-app-pipeline:/usr/src \
             -w /usr/src \
+            -u root \
             sonarsource/sonar-scanner-cli:latest \
             sonar-scanner \
-            -Dproject.settings=sonar-project.properties \
+            -Dsonar.projectKey=voting-app \
+            -Dsonar.sources=. \
             -Dsonar.host.url=http://192.168.18.63:9000 \
             -Dsonar.login=sqa_8cf00cc4ae6cede80c8511ffe6457f52322d4065
         '''
-            }   
+            } 
         }
         stage('3. Build Docker Images') {
             steps {
