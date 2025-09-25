@@ -8,15 +8,19 @@ pipeline {
             } 
         }
         stage('2. Code Quality Scan') { 
-            steps { 
-                sh '''
-                    echo "Running SonarQube analysis..."
-                    sonar-scanner \
-                    -Dsonar.projectKey=voting-app \
-                    -Dsonar.sources=. \
-                    -Dsonar.host.url=http://localhost:4000 \
-                    -Dsonar.login=sqa_8cf00cc4ae6cede80c8511ffe6457f52322d4065
-                '''
+    steps { 
+        sh '''
+            echo "Running SonarQube analysis with Docker..."
+            docker run --rm \
+            -v $(pwd):/usr/src \
+            -w /usr/src \
+            sonarsource/sonar-scanner-cli:latest \
+            sonar-scanner \
+            -Dsonar.projectKey=voting-app \
+            -Dsonar.sources=. \
+            -Dsonar.host.url=http://localhost:4000 \
+            -Dsonar.login=sqa_8cf00cc4ae6cede80c8511ffe6457f52322d4065
+        '''
             } 
         }
         stage('3. Build Docker Images') {
