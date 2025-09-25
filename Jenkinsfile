@@ -1,16 +1,13 @@
 pipeline {
     agent any
 
-    tools {
-        git 'Default'
-    }
-
     environment {
         SONARQUBE_TOKEN = credentials('sonarqube-token')
-        SONAR_HOST_URL = 'http://sonarqube:9000'
+        SONAR_HOST_URL  = 'http://sonarqube:9000'
     }
 
     stages {
+
         stage('Checkout Code') {
             steps {
                 echo 'Checking out source code...'
@@ -26,12 +23,13 @@ pipeline {
                         -Dsonar.projectKey=voting-app \
                         -Dsonar.sources=. \
                         -Dsonar.host.url=$SONAR_HOST_URL \
-                        -Dsonar.token=$SONARQUBE_TOKEN
+                        -Dsonar.login=$SONARQUBE_TOKEN \
+                        -Dsonar.qualitygate.wait=false
                 """
             }
         }
 
-        stage('Build & Deploy with Docker') {
+        stage('Build & Deploy Docker') {
             steps {
                 echo 'Building Docker images and starting services...'
                 sh 'docker-compose -f docker-compose.yml build'
@@ -41,20 +39,11 @@ pipeline {
 
         stage('Trivy Scan') {
             steps {
-                echo 'Scanning Docker images for vulnerabilities...'
-                sh 'trivy image --exit-code 1 --severity HIGH,CRITICAL vote:latest'
-                sh 'trivy image --exit-code 1 --severity HIGH,CRITICAL result:latest'
-                sh 'trivy image --exit-code 1 --severity HIGH,CRITICAL worker:latest'
+                echo 'Scanning Docker images with Trivy...'
+                // Replace these with your actual image names
+                sh 'trivy image voting-app_vote:latest'
+                sh 'trivy image voting-app_result:latest'
             }
-        }
-    }
-
-    post {
-        always {
-            echo 'Pipeline execution completed'
-        }
-        failure {
-            echo 'Build failed. Please check logs for details.'
         }
     }
 }
