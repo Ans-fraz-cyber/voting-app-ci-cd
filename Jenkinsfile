@@ -10,16 +10,32 @@ pipeline {
         stage('2. Code Quality Scan') { 
     steps { 
         sh '''
-            echo "Running SonarQube analysis..."
-            # Use absolute path and proper permissions
+            echo "=== SONARQUBE ANALYSIS ==="
+            echo "Current directory: $(pwd)"
+            echo "Files in vote directory:"
+            find vote -name "*.py" -o -name "*.js" -o -name "*.cs" | head -10
+            echo "Files in result directory:"
+            find result -name "*.py" -o -name "*.js" -o -name "*.cs" | head -10
+            echo "Files in worker directory:"
+            find worker -name "*.py" -o -name "*.js" -o -name "*.cs" | head -10
+            
+            # Create proper configuration
+            cat > sonar-project.properties << 'EOL'
+sonar.projectKey=voting-app
+sonar.projectName=Voting Application
+sonar.sources=vote,result,worker
+sonar.inclusions=**/*.py,**/*.js,**/*.cs,**/*.html,**/*.json
+sonar.exclusions=**/node_modules/**,**/__pycache__/**,**/*.pyc
+sonar.sourceEncoding=UTF-8
+EOL
+
+            echo "=== Running SonarQube Scan ==="
             docker run --rm \
-            -v /var/jenkins_home/workspace/voting-app-pipeline:/usr/src \
+            -v $(pwd):/usr/src \
             -w /usr/src \
-            -u root \
             sonarsource/sonar-scanner-cli:latest \
             sonar-scanner \
-            -Dsonar.projectKey=voting-app \
-            -Dsonar.sources=. \
+            -Dproject.settings=sonar-project.properties \
             -Dsonar.host.url=http://192.168.18.63:9000 \
             -Dsonar.login=sqa_8cf00cc4ae6cede80c8511ffe6457f52322d4065
         '''
