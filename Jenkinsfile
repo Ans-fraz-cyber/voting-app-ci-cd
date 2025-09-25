@@ -1,10 +1,6 @@
 pipeline {
     agent any
 
-    tools {
-        hudson.plugins.sonar.SonarRunnerInstallation 'SonarQubeScanner'  // ← Exact name from error message
-    }
-
     environment {
         SONARQUBE_TOKEN = credentials('sonarqube-token')
         SONAR_HOST_URL  = 'http://sonarqube:9000'
