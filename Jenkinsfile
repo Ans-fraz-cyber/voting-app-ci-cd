@@ -8,45 +8,39 @@ pipeline {
             } 
         }
         stage('2. Code Quality Scan') { 
-    steps { 
-        sh '''
-            echo "=== SONARQUBE ANALYSIS ==="
-            echo "Current directory: $(pwd)"
-            echo "Files in vote directory:"
-            find vote -name "*.py" -o -name "*.js" -o -name "*.cs" | head -10
-            echo "Files in result directory:"
-            find result -name "*.py" -o -name "*.js" -o -name "*.cs" | head -10
-            echo "Files in worker directory:"
-            find worker -name "*.py" -o -name "*.js" -o -name "*.cs" | head -10
-            
-            # Create proper configuration
-            cat > sonar-project.properties << 'EOL'
+            steps { 
+                sh '''
+                    echo "=== SONARQUBE ANALYSIS ==="
+                    
+                    # Create the properties file CORRECTLY
+                    cat > sonar-project.properties << EOL
 sonar.projectKey=voting-app
 sonar.projectName=Voting Application
 sonar.sources=vote,result,worker
-sonar.inclusions=**/*.py,**/*.js,**/*.cs,**/*.html,**/*.json
-sonar.exclusions=**/node_modules/**,**/__pycache__/**,**/*.pyc
 sonar.sourceEncoding=UTF-8
 EOL
 
-            echo "=== Running SonarQube Scan ==="
-            docker run --rm \
-            -v $(pwd):/usr/src \
-            -w /usr/src \
-            sonarsource/sonar-scanner-cli:latest \
-            sonar-scanner \
-            -Dproject.settings=sonar-project.properties \
-            -Dsonar.host.url=http://192.168.18.63:9000 \
-            -Dsonar.login=sqa_8cf00cc4ae6cede80c8511ffe6457f52322d4065
-        '''
+                    echo "=== Properties file content ==="
+                    cat sonar-project.properties
+                    
+                    echo "=== Running SonarQube Scan ==="
+                    docker run --rm \
+                    -v $(pwd):/usr/src \
+                    -w /usr/src \
+                    sonarsource/sonar-scanner-cli:latest \
+                    sonar-scanner \
+                    -Dproject.settings=sonar-project.properties \
+                    -Dsonar.host.url=http://192.168.18.63:9000 \
+                    -Dsonar.login=sqa_8cf00cc4ae6cede80c8511ffe6457f52322d4065
+                '''
             } 
         }
         stage('3. Build Docker Images') {
             steps {
                 sh 'echo "Stage 3: Building images..."'
-                sh 'docker build -t voting-app-vote /host-voting-app/vote'
-                sh 'docker build -t voting-app-result /host-voting-app/result'
-                sh 'docker build -t voting-app-worker /host-voting-app/worker'
+                sh 'docker build -t voting-app-vote ./vote'
+                sh 'docker build -t voting-app-result ./result'
+                sh 'docker build -t voting-app-worker ./worker'
             }
         }
         stage('4. Security Vulnerability Scan') {
@@ -84,6 +78,12 @@ EOL
                 sh 'docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"'
                 sh 'echo " 7-STAGE PIPELINE COMPLETED SUCCESSFULLY!"'
             }
+        }
+    }
+    
+    post {
+        always {
+            sh 'echo "Pipeline completed - check SonarQube dashboard for results"'
         }
     }
 }
