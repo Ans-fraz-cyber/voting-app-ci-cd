@@ -2,12 +2,12 @@ pipeline {
     agent any
 
     tools {
-        // Ensure Git and SonarQube Scanner are available
         git 'Default'
     }
 
     environment {
-        SONARQUBE = credentials('sonarqube-token')
+        SONARQUBE_TOKEN = credentials('sonarqube-token')
+        SONAR_HOST_URL = 'http://sonarqube:9000'
     }
 
     stages {
@@ -21,17 +21,13 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 echo 'Running SonarQube Scan...'
-                withSonarQubeEnv('MySonarQubeServer') {
-                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
-                        sh """
-                            ${tool 'SonarQubeScanner'}/bin/sonar-scanner \
-                                -Dsonar.projectKey=voting-app \
-                                -Dsonar.sources=. \
-                                -Dsonar.host.url=http://sonarqube:9000 \
-                                -Dsonar.token=$SONAR_TOKEN
-                        """
-                    }
-                }
+                sh """
+                    ${tool 'SonarQubeScanner'}/bin/sonar-scanner \
+                        -Dsonar.projectKey=voting-app \
+                        -Dsonar.sources=. \
+                        -Dsonar.host.url=$SONAR_HOST_URL \
+                        -Dsonar.token=$SONARQUBE_TOKEN
+                """
             }
         }
 
@@ -40,6 +36,15 @@ pipeline {
                 echo 'Building Docker images and starting services...'
                 sh 'docker-compose -f docker-compose.yml build'
                 sh 'docker-compose -f docker-compose.yml up -d'
+            }
+        }
+
+        stage('Trivy Scan') {
+            steps {
+                echo 'Scanning Docker images for vulnerabilities...'
+                sh 'trivy image --exit-code 1 --severity HIGH,CRITICAL vote:latest'
+                sh 'trivy image --exit-code 1 --severity HIGH,CRITICAL result:latest'
+                sh 'trivy image --exit-code 1 --severity HIGH,CRITICAL worker:latest'
             }
         }
     }
