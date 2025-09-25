@@ -41,9 +41,34 @@ services:
     networks:
       - back-tier
 
+  sonarqube:
+    image: sonarqube:community
+    container_name: sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    depends_on:
+      - sonarqube_db
+    networks:
+      - back-tier
+
+  sonarqube_db:
+    image: postgres:15-alpine
+    container_name: sonarqube_db
+    environment:
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: sonar
+      POSTGRES_DB: sonarqube
+    volumes:
+      - sonarqube_db_data:/var/lib/postgresql/data
+    networks:
+      - back-tier
+
 networks:
   front-tier:
   back-tier:
 
 volumes:
   db-data:
+  sonarqube_db_data:
