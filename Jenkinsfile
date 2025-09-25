@@ -30,6 +30,19 @@ pipeline {
             }
         }
 
+        stage('Run Tests') {
+            steps {
+                echo "Running unit tests..."
+                sh '''
+                    if [ -d "tests" ]; then
+                        pytest --maxfail=1 --disable-warnings -q
+                    else
+                        echo "No tests folder found, skipping..."
+                    fi
+                '''
+            }
+        }
+
         stage('Build & Deploy with Docker') {
             steps {
                 echo "Building Docker images and starting services..."
@@ -51,16 +64,3 @@ pipeline {
         }
     }
 }
-        stage('Run Tests') {
-            steps {
-                echo "Running unit tests..."
-                sh '''
-                    # Example with pytest (Python), change if Node.js/Jest or other
-                    if [ -d "tests" ]; then
-                        pytest --maxfail=1 --disable-warnings -q
-                    else
-                        echo "No tests folder found, skipping..."
-                    fi
-                '''
-            }
-        }
