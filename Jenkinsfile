@@ -17,7 +17,7 @@ pipeline {
             sonarsource/sonar-scanner-cli:latest \
             sonar-scanner \
             -Dsonar.projectKey=voting-app \
-            -Dsonar.sources=. \
+            -Dsonar.sources=vote,result,worker \
             -Dsonar.host.url=http://192.168.18.63:9000 \
             -Dsonar.login=sqa_8cf00cc4ae6cede80c8511ffe6457f52322d4065
         '''
