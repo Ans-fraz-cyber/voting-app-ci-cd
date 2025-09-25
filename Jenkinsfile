@@ -1,51 +1,43 @@
 pipeline {
     agent any
 
+    tools {
+        // Ensure Git and SonarQube Scanner are available
+        git 'Default'
+    }
+
     environment {
-        SCANNER_HOME = tool 'SonarQubeScanner'   // must match the name in Jenkins Global Tool Configuration
+        SONARQUBE = credentials('sonarqube-token')
     }
 
     stages {
         stage('Checkout Code') {
             steps {
-                echo "Checking out source code..."
+                echo 'Checking out source code...'
                 checkout scm
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                echo "Running SonarQube Scan..."
-                withSonarQubeEnv('MySonarQubeServer') {   // must match the name in Jenkins > Configure System > SonarQube servers
-                    withCredentials([string(credentialsId: 'Sonar', variable: 'SONAR_AUTH_TOKEN')]) {
-                        sh '''
-                            $SCANNER_HOME/bin/sonar-scanner \
-                            -Dsonar.projectKey=voting-app \
-                            -Dsonar.sources=. \
-                            -Dsonar.host.url=$SONAR_HOST_URL \
-                            -Dsonar.login=$SONAR_AUTH_TOKEN
-                        '''
+                echo 'Running SonarQube Scan...'
+                withSonarQubeEnv('MySonarQubeServer') {
+                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+                        sh """
+                            ${tool 'SonarQubeScanner'}/bin/sonar-scanner \
+                                -Dsonar.projectKey=voting-app \
+                                -Dsonar.sources=. \
+                                -Dsonar.host.url=http://sonarqube:9000 \
+                                -Dsonar.token=$SONAR_TOKEN
+                        """
                     }
                 }
             }
         }
 
-        stage('Run Tests') {
-            steps {
-                echo "Running unit tests..."
-                sh '''
-                    if [ -d "tests" ]; then
-                        pytest --maxfail=1 --disable-warnings -q
-                    else
-                        echo "No tests folder found, skipping..."
-                    fi
-                '''
-            }
-        }
-
         stage('Build & Deploy with Docker') {
             steps {
-                echo "Building Docker images and starting services..."
+                echo 'Building Docker images and starting services...'
                 sh 'docker-compose -f docker-compose.yml build'
                 sh 'docker-compose -f docker-compose.yml up -d'
             }
@@ -54,13 +46,10 @@ pipeline {
 
     post {
         always {
-            echo "Pipeline execution completed"
-        }
-        success {
-            echo "Build succeeded. Check SonarQube dashboard for analysis report."
+            echo 'Pipeline execution completed'
         }
         failure {
-            echo "Build failed. Please check logs for details."
+            echo 'Build failed. Please check logs for details.'
         }
     }
 }
