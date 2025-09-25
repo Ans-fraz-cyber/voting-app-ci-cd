@@ -2,12 +2,11 @@ pipeline {
     agent any
 
     environment {
-        SONARQUBE_TOKEN = credentials('sonarqube-token') // Already stored in Jenkins
-        SONAR_HOST_URL  = 'http://sonarqube:9000'        // Use container name
+        SONARQUBE_TOKEN = credentials('sonarqube-token')
+        SONAR_HOST_URL  = 'http://sonarqube:9000'
     }
 
     stages {
-
         stage('Checkout Code') {
             steps {
                 echo 'Checking out source code...'
@@ -18,7 +17,7 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 echo 'Running SonarQube Scan...'
-                withSonarQubeEnv('SonarQubeServer') { // Use the configured Jenkins SonarQube server
+                withSonarQubeEnv('MySonarQubeServer') { // ← Changed to match your configuration
                     sh """
                         sonar-scanner \
                             -Dsonar.projectKey=voting-app \
@@ -41,7 +40,6 @@ pipeline {
         stage('Trivy Scan') {
             steps {
                 echo 'Scanning Docker images with Trivy...'
-                // Replace these with your actual image names if different
                 sh 'trivy image voting-app_vote:latest || true'
                 sh 'trivy image voting-app_result:latest || true'
             }
