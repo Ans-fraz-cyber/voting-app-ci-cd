@@ -10,18 +10,43 @@ pipeline {
         stage('2. Code Quality Scan') { 
     steps { 
         sh '''
-            echo "Running SonarQube analysis with local scanner..."
+            echo "Running SonarQube analysis with proper configuration..."
             
-            # Use the sonar-scanner you installed
-            /opt/sonar-scanner/bin/sonar-scanner \
-            -Dsonar.projectKey=voting-app \
-            -Dsonar.projectName="Voting Application" \
-            -Dsonar.sources=vote,result,worker \
-            -Dsonar.sourceEncoding=UTF-8 \
+            # Create sonar-project.properties
+            cat > sonar-project.properties << 'EOL'
+sonar.projectKey=voting-app
+sonar.projectName=Voting Application
+sonar.projectVersion=1.0
+
+# Scan all source directories
+sonar.sources=vote,result,worker
+
+# Language specific settings
+sonar.language=py,js,cs
+
+# Include all relevant files
+sonar.inclusions=**/*.py,**/*.js,**/*.cs,**/*.html,**/*.json,**/*.xml
+
+# Exclude unnecessary files
+sonar.exclusions=**/node_modules/**,**/__pycache__/**,**/*.pyc,**/bin/**,**/obj/**
+
+sonar.sourceEncoding=UTF-8
+EOL
+
+            echo "Configuration file content:"
+            cat sonar-project.properties
+            
+            # Run the analysis
+            docker run --rm \
+            -v $(pwd):/usr/src \
+            -w /usr/src \
+            sonarsource/sonar-scanner-cli:latest \
+            sonar-scanner \
+            -Dproject.settings=sonar-project.properties \
             -Dsonar.host.url=http://192.168.18.63:9000 \
             -Dsonar.login=sqa_8cf00cc4ae6cede80c8511ffe6457f52322d4065
         '''
-            } 
+            }   
         }
         stage('3. Build Docker Images') {
             steps {
