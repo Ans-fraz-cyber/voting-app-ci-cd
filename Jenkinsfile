@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    tools {
+        sonarqubeScanner 'SonarQubeScanner'  // ← Add this line
+    }
+
     environment {
         SONARQUBE_TOKEN = credentials('sonarqube-token')
         SONAR_HOST_URL  = 'http://sonarqube:9000'
@@ -17,7 +21,7 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 echo 'Running SonarQube Scan...'
-                withSonarQubeEnv('MySonarQubeServer') { // ← Changed to match your configuration
+                withSonarQubeEnv('MySonarQubeServer') {
                     sh """
                         sonar-scanner \
                             -Dsonar.projectKey=voting-app \
