@@ -1,64 +1,43 @@
 pipeline {
     agent any
-    
+
     environment {
-        SONARQUBE_TOKEN = credentials('sonarqube-token')
-        SONAR_HOST_URL  = 'http://sonarqube:9000'
+        SONAR_HOME = tool "MySonarQubeServer"  // your SonarQube installation name
     }
 
     stages {
-        stage('Checkout Code') {
+        stage('Clone Code') {
             steps {
-                checkout scm
+                echo "🔄 Cloning code from GitHub"
+                git(
+                    credentialsId: "github-creds",  // your Jenkins GitHub credentials
+                    url: 'https://github.com/eGeeks-Design-and-Development/BrainBench-Web-App.git',
+                    branch: 'main'  // change to your desired branch if needed
+                )
             }
         }
 
         stage('SonarQube Quality Analysis') {
             steps {
-                withSonarQubeEnv('MySonarQubeServer') {
+                withSonarQubeEnv('MySonarQubeServer') {  // must match SonarQube installation name
                     sh """
-                        sonar-scanner \
-                            -Dsonar.projectName=voting-app \
-                            -Dsonar.projectKey=voting-app \
-                            -Dsonar.host.url=$SONAR_HOST_URL \
-                            -Dsonar.login=$SONARQUBE_TOKEN
+                        ${SONAR_HOME}/bin/sonar-scanner \
+                        -Dsonar.projectName=voting-app \
+                        -Dsonar.projectKey=voting-app \
+                        -Dsonar.host.url=http://sonarqube:9000 \
+                        -Dsonar.login=${SONARQUBE_TOKEN}
                     """
                 }
-            }
-        }
-
-        stage('Trivy File System Scan') {
-            steps {
-                sh "trivy fs --format table -o trivy-fs-report.html . || true"
-            }
-        }
-
-        stage('Build & Deploy using Docker compose') {
-            steps {
-                sh "docker compose -f docker-compose.yml build"
-                sh "docker compose -f docker-compose.yml up -d"
-            }
-        }
-
-        stage('Trivy Image Scan') {
-            steps {
-                sh "trivy image voting-app_vote:latest || true"
-                sh "trivy image voting-app_result:latest || true"
-                sh "trivy image voting-app_worker:latest || true"
             }
         }
     }
 
     post {
-        always {
-            echo 'Cleaning up...'
-            sh 'docker compose -f docker-compose.yml down || true'
-        }
         success {
-            echo 'Pipeline completed successfully!'
+            echo "✅ Pipeline completed successfully!"
         }
         failure {
-            echo 'Pipeline failed! Check logs above for details.'
+            echo "❌ Pipeline failed. Check logs above."
         }
     }
 }
