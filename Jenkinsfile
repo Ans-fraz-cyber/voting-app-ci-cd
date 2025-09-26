@@ -2,10 +2,11 @@ pipeline {
     agent any
 
     environment {
-        SONARQUBE_TOKEN = credentials('sonarqube-token') // Jenkins secret token
-        GITHUB_CREDS    = 'github-creds'                 // Jenkins Git credentials
+        SONARQUBE_TOKEN = credentials('MySonarQubeServer') // Use the correct token ID
+        GITHUB_CREDS    = 'github-creds'
         SONAR_HOST_URL  = 'http://voting-app-sonarqube-1:9000'
     }
+
 
     stages {
         stage('Clone Code') {
