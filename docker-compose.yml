@@ -1,11 +1,4 @@
-version: '3.8'
-
 services:
-  redis:
-    image: redis:alpine
-    networks:
-      - back-tier
-
   db:
     image: postgres:15-alpine
     environment:
@@ -13,7 +6,14 @@ services:
       POSTGRES_PASSWORD: "postgres"
       POSTGRES_DB: "postgres"
     volumes:
-      - "db-data:/var/lib/postgresql/data"
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - back-tier
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
     networks:
       - back-tier
 
@@ -24,6 +24,8 @@ services:
     environment:
       OPTION_A: "Cats"
       OPTION_B: "Dogs"
+      REDIS_HOST: "redis"
+      REDIS_PORT: 6379
     networks:
       - front-tier
       - back-tier
@@ -32,36 +34,40 @@ services:
     build: ./result
     ports:
       - "5001:80"
+    environment:
+      REDIS_HOST: "redis"
+      REDIS_PORT: 6379
     networks:
       - front-tier
       - back-tier
 
   worker:
     build: ./worker
-    networks:
-      - back-tier
-
-  sonarqube:
-    image: sonarqube:community
-    container_name: sonarqube
-    ports:
-      - "9000:9000"
     environment:
-      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
-    depends_on:
-      - sonarqube_db
+      REDIS_HOST: "redis"
+      REDIS_PORT: 6379
     networks:
       - back-tier
 
   sonarqube_db:
     image: postgres:15-alpine
-    container_name: sonarqube_db
     environment:
       POSTGRES_USER: sonar
       POSTGRES_PASSWORD: sonar
       POSTGRES_DB: sonarqube
     volumes:
       - sonarqube_db_data:/var/lib/postgresql/data
+    networks:
+      - back-tier
+
+  sonarqube:
+    image: sonarqube:community
+    ports:
+      - "9000:9000"
+    environment:
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    depends_on:
+      - sonarqube_db
     networks:
       - back-tier
 
