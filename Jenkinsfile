@@ -2,14 +2,14 @@ pipeline {
     agent any
 
     environment {
-        // Jenkins tool configuration for SonarQube scanner
+        // Jenkins SonarQube Scanner tool
         SONAR_HOME = tool name: "SonarQubeScanner", type: "hudson.plugins.sonar.SonarRunnerInstallation"
-        // SonarQube token from Jenkins credentials
+        // SonarQube token stored in Jenkins credentials
         SONARQUBE_TOKEN = credentials('sonarqube-token')
-        // URL of your running SonarQube server
-        SONAR_HOST_URL  = 'http://localhost:9000'
+        // SonarQube container URL (use container name, not localhost)
+        SONAR_HOST_URL  = 'http://voting-app-sonarqube-1:9000'
         // GitHub credentials ID for cloning repo
-        GITHUB_CREDS = 'github-creds'
+        GITHUB_CREDS    = 'github-creds'
     }
 
     stages {
