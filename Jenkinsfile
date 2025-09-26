@@ -31,21 +31,17 @@ pipeline {
             }
         }
 
-        // ✅ New Build Stage
         stage('Build Application') {
-            steps {
-                echo "🏗️ Building the application"
-                // Add your build command here, e.g., for Python:
-                // sh "python setup.py install" 
-                // or for Node.js:
-                // sh "npm install && npm run build"
-                
-                // Example for Node.js project
-                sh "npm install"
-                sh "npm run build"
-            }
+    steps {
+        echo "🏗️ Building the application"
+        // Use NodeJS tool you configured in Jenkins (name: NodeJS)
+        nodejs('NodeJS') {
+            sh "npm install"
+            sh "npm run build"
         }
     }
+}
+
 
     post {
         success {
