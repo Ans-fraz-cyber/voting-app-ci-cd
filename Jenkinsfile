@@ -2,30 +2,38 @@ pipeline {
     agent any
 
     environment {
-        SONAR_HOME = tool "MySonarQubeServer"  // your SonarQube installation name
+        // Jenkins tool configuration for SonarQube scanner
+        SONAR_HOME = tool name: "Sonar", type: "hudson.plugins.sonar.SonarRunnerInstallation"
+        // SonarQube token from Jenkins credentials
+        SONARQUBE_TOKEN = credentials('sonarqube-token')
+        // URL of your running SonarQube server
+        SONAR_HOST_URL  = 'http://localhost:9000'
+        // GitHub credentials ID for cloning repo
+        GITHUB_CREDS = 'github-creds'
     }
 
     stages {
         stage('Clone Code') {
             steps {
-                echo "🔄 Cloning code from GitHub"
+                echo "🔄 Cloning code from main branch"
                 git(
-                    credentialsId: "github-creds",  // your Jenkins GitHub credentials
-                    url: 'https://github.com/eGeeks-Design-and-Development/BrainBench-Web-App.git',
-                    branch: 'main'  // change to your desired branch if needed
+                    credentialsId: "${GITHUB_CREDS}",
+                    url: 'https://github.com/Ans-fraz-cyber/voting-app-ci-cd.git',
+                    branch: 'main'
                 )
             }
         }
 
         stage('SonarQube Quality Analysis') {
             steps {
-                withSonarQubeEnv('MySonarQubeServer') {  // must match SonarQube installation name
+                echo "🔍 Running SonarQube analysis"
+                withSonarQubeEnv('MySonarQubeServer') { 
                     sh """
                         ${SONAR_HOME}/bin/sonar-scanner \
                         -Dsonar.projectName=voting-app \
                         -Dsonar.projectKey=voting-app \
-                        -Dsonar.host.url=http://sonarqube:9000 \
-                        -Dsonar.login=${SONARQUBE_TOKEN}
+                        -Dsonar.host.url=$SONAR_HOST_URL \
+                        -Dsonar.login=$SONARQUBE_TOKEN
                     """
                 }
             }
