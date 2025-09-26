@@ -36,8 +36,11 @@ pipeline {
 
         stage('Build Application') {
             steps {
-                echo "🏗️ Building the application using Docker Compose"
-                sh 'docker-compose build'
+                echo "🏗️ Building the application using Docker Compose on host"
+                sh '''
+                    # Use host Docker via mounted socket
+                    DOCKER_HOST=unix:///var/run/docker.sock docker-compose up --build -d
+                '''
             }
         }
     }
