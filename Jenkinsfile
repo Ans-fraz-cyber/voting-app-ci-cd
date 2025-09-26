@@ -27,10 +27,10 @@
                 echo "🔍 Running SonarQube analysis"
                 withSonarQubeEnv('MySonarQubeServer') { 
                     // Pass the token securely as an argument
-                    sh(
-                        script: "${SONAR_HOME}/bin/sonar-scanner -Dsonar.projectName=voting-app -Dsonar.projectKey=voting-app -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=${SONARQUBE_TOKEN}",
-                        returnStatus: true
-                    )
+                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'TOKEN')]) {
+    sh "${SONAR_HOME}/bin/sonar-scanner -Dsonar.projectName=voting-app -Dsonar.projectKey=voting-app -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=$TOKEN"
+}
+
                 }
             }
         }
