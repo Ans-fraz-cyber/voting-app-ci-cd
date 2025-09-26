@@ -1,6 +1,6 @@
 pipeline {
     agent any
-
+    
     environment {
         SONARQUBE_TOKEN = credentials('sonarqube-token')
         SONAR_HOST_URL  = 'http://sonarqube:9000'
@@ -9,19 +9,17 @@ pipeline {
     stages {
         stage('Checkout Code') {
             steps {
-                echo 'Checking out source code...'
                 checkout scm
             }
         }
 
-        stage('SonarQube Analysis') {
+        stage('SonarQube Quality Analysis') {
             steps {
-                echo 'Running SonarQube Scan...'
                 withSonarQubeEnv('MySonarQubeServer') {
                     sh """
                         sonar-scanner \
+                            -Dsonar.projectName=voting-app \
                             -Dsonar.projectKey=voting-app \
-                            -Dsonar.sources=. \
                             -Dsonar.host.url=$SONAR_HOST_URL \
                             -Dsonar.login=$SONARQUBE_TOKEN
                     """
@@ -29,19 +27,24 @@ pipeline {
             }
         }
 
-        stage('Build & Deploy Docker') {
+        stage('Trivy File System Scan') {
             steps {
-                echo 'Building and deploying Docker images...'
-                sh 'docker compose -f docker-compose.yml build'
-                sh 'docker compose -f docker-compose.yml up -d'
+                sh "trivy fs --format table -o trivy-fs-report.html . || true"
             }
         }
 
-        stage('Trivy Scan') {
+        stage('Build & Deploy using Docker compose') {
             steps {
-                echo 'Scanning Docker images with Trivy...'
-                sh 'trivy image voting-app_vote:latest || true'
-                sh 'trivy image voting-app_result:latest || true'
+                sh "docker compose -f docker-compose.yml build"
+                sh "docker compose -f docker-compose.yml up -d"
+            }
+        }
+
+        stage('Trivy Image Scan') {
+            steps {
+                sh "trivy image voting-app_vote:latest || true"
+                sh "trivy image voting-app_result:latest || true"
+                sh "trivy image voting-app_worker:latest || true"
             }
         }
     }
@@ -49,7 +52,7 @@ pipeline {
     post {
         always {
             echo 'Cleaning up...'
-            sh 'docker compose -f docker-compose.yml down'
+            sh 'docker compose -f docker-compose.yml down || true'
         }
         success {
             echo 'Pipeline completed successfully!'
