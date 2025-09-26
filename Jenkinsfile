@@ -32,16 +32,15 @@ pipeline {
         }
 
         stage('Build Application') {
-    steps {
-        echo "🏗️ Building the application"
-        // Use NodeJS tool you configured in Jenkins (name: NodeJS)
-        nodejs('NodeJS') {
-            sh "npm install"
-            sh "npm run build"
+            steps {
+                echo "🏗️ Building the application"
+                nodejs('NodeJS') {
+                    sh "npm install"
+                    sh "npm run build"
+                }
+            }
         }
     }
-}
-
 
     post {
         success {
@@ -51,4 +50,4 @@ pipeline {
             echo "❌ Pipeline failed. Check logs above."
         }
     }
-}
+} // <-- Make sure this final closing brace exists
