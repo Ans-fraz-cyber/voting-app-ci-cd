@@ -1,4 +1,4 @@
-pipeline {
+	pipeline {
     agent any
 
     environment {
@@ -6,7 +6,7 @@ pipeline {
         SONAR_HOME = tool name: "SonarQubeScanner", type: "hudson.plugins.sonar.SonarRunnerInstallation"
         // SonarQube token stored in Jenkins credentials
         SONARQUBE_TOKEN = credentials('sonarqube-token')
-        // SonarQube container URL (use container name, not localhost)
+        // SonarQube container URL
         SONAR_HOST_URL  = 'http://voting-app-sonarqube-1:9000'
         // GitHub credentials ID for cloning repo
         GITHUB_CREDS    = 'github-creds'
@@ -28,13 +28,11 @@ pipeline {
             steps {
                 echo "🔍 Running SonarQube analysis"
                 withSonarQubeEnv('MySonarQubeServer') { 
-                    sh """
-                        ${SONAR_HOME}/bin/sonar-scanner \
-                        -Dsonar.projectName=voting-app \
-                        -Dsonar.projectKey=voting-app \
-                        -Dsonar.host.url=$SONAR_HOST_URL \
-                        -Dsonar.login=$SONARQUBE_TOKEN
-                    """
+                    // Pass the token securely as an argument
+                    sh(
+                        script: "${SONAR_HOME}/bin/sonar-scanner -Dsonar.projectName=voting-app -Dsonar.projectKey=voting-app -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=${SONARQUBE_TOKEN}",
+                        returnStatus: true
+                    )
                 }
             }
         }
@@ -49,3 +47,4 @@ pipeline {
         }
     }
 }
+
