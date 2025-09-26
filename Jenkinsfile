@@ -7,7 +7,6 @@ pipeline {
         SONAR_HOST_URL  = 'http://voting-app-sonarqube-1:9000'
     }
 
-
     stages {
         stage('Clone Code') {
             steps {
@@ -37,13 +36,8 @@ pipeline {
 
         stage('Build Application') {
             steps {
-                echo "🏗️ Building the frontend application"
-                nodejs('NodeJS') {
-                    dir('frontend') {  // go into the frontend folder
-                        sh 'npm install'
-                        sh 'npm run build'
-                    }
-                }
+                echo "🏗️ Building the application using Docker Compose"
+                sh 'docker-compose build'
             }
         }
     }
