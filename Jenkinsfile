@@ -2,10 +2,9 @@ pipeline {
     agent any
 
     environment {
-        SONAR_HOME = tool name: "SonarQubeScanner", type: "hudson.plugins.sonar.SonarRunnerInstallation"
-        SONARQUBE_TOKEN = credentials('sonarqube-token')
+        SONARQUBE_TOKEN = credentials('sonarqube-token') // Jenkins secret token
+        GITHUB_CREDS    = 'github-creds'                 // Jenkins Git credentials
         SONAR_HOST_URL  = 'http://voting-app-sonarqube-1:9000'
-        GITHUB_CREDS    = 'github-creds'
     }
 
     stages {
@@ -23,20 +22,26 @@ pipeline {
         stage('SonarQube Quality Analysis') {
             steps {
                 echo "🔍 Running SonarQube analysis"
-                withSonarQubeEnv('MySonarQubeServer') { 
-                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'TOKEN')]) {
-                        sh "${SONAR_HOME}/bin/sonar-scanner -Dsonar.projectName=voting-app -Dsonar.projectKey=voting-app -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=$TOKEN"
-                    }
+                withSonarQubeEnv('MySonarQubeServer') {
+                    sh """
+                        ${tool name: 'SonarQubeScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'}/bin/sonar-scanner \
+                        -Dsonar.projectName=voting-app \
+                        -Dsonar.projectKey=voting-app \
+                        -Dsonar.host.url=${SONAR_HOST_URL} \
+                        -Dsonar.token=${SONARQUBE_TOKEN}
+                    """
                 }
             }
         }
 
         stage('Build Application') {
             steps {
-                echo "🏗️ Building the application"
+                echo "🏗️ Building the frontend application"
                 nodejs('NodeJS') {
-                    sh "npm install"
-                    sh "npm run build"
+                    dir('frontend') {  // go into the frontend folder
+                        sh 'npm install'
+                        sh 'npm run build'
+                    }
                 }
             }
         }
@@ -50,4 +55,4 @@ pipeline {
             echo "❌ Pipeline failed. Check logs above."
         }
     }
-} // <-- Make sure this final closing brace exists
+}
