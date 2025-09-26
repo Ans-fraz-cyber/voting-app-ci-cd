@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         // Jenkins tool configuration for SonarQube scanner
-        SONAR_HOME = tool name: "Sonar", type: "hudson.plugins.sonar.SonarRunnerInstallation"
+        SONAR_HOME = tool name: "SonarQubeScanner", type: "hudson.plugins.sonar.SonarRunnerInstallation"
         // SonarQube token from Jenkins credentials
         SONARQUBE_TOKEN = credentials('sonarqube-token')
         // URL of your running SonarQube server
