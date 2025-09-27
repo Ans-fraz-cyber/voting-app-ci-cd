@@ -4,8 +4,6 @@ pipeline {
     environment {
         SONARQUBE = 'SonarQubeServer'        // must match the name in Jenkins > Configure System
         SONAR_AUTH_TOKEN = credentials('sonar-token')  // 👈 maps your Jenkins credential ID
-        IMAGE_NAME = "voting-app"
-        IMAGE_TAG = "latest"
     }
 
     stages {
@@ -34,20 +32,24 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build Docker Images') {
             steps {
-                echo "🐳 Building Docker image..."
+                echo "🐳 Building Docker images for vote, result, and worker..."
                 sh '''
-                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                    docker build -t voting-app-vote:latest ./vote
+                    docker build -t voting-app-result:latest ./result
+                    docker build -t voting-app-worker:latest ./worker
                 '''
             }
         }
 
         stage('Trivy Scan') {
             steps {
-                echo "🔎 Running Trivy vulnerability scan..."
+                echo "🔎 Running Trivy vulnerability scan on all services..."
                 sh '''
-                    trivy image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_NAME}:${IMAGE_TAG}
+                    trivy image --exit-code 0 --severity HIGH,CRITICAL voting-app-vote:latest
+                    trivy image --exit-code 0 --severity HIGH,CRITICAL voting-app-result:latest
+                    trivy image --exit-code 0 --severity HIGH,CRITICAL voting-app-worker:latest
                 '''
             }
         }
