@@ -88,16 +88,17 @@ pipeline {
             }
         }
 
-        // 🚀 NEW DEPLOYMENT STAGE - ADDED AT THE END
+        // 🚀 NEW DEPLOYMENT STAGE - FIXED VERSION
         stage('Deploy Application') {
             steps {
                 echo "🚀 Deploying voting application..."
                 sh '''
-                    # Stop and remove existing containers
-                    docker compose down || true
+                    # Stop and remove ONLY voting app containers (not SonarQube)
+                    docker stop voting-app-vote-1 voting-app-result-1 voting-app-worker-1 voting-app-redis-1 voting-app-db-1 2>/dev/null || true
+                    docker rm voting-app-vote-1 voting-app-result-1 voting-app-worker-1 voting-app-redis-1 voting-app-db-1 2>/dev/null || true
                     
-                    # Start all services
-                    docker compose up -d
+                    # Start only voting app services (SonarQube will continue running)
+                    docker compose up -d vote result worker redis db
                     
                     # Wait for services to be ready
                     sleep 30
