@@ -1,16 +1,10 @@
 pipeline {
     agent any
 
-    tools {
-        jdk 'jdk-21'
-        maven 'Maven'
-        git 'Default'
-        // DO NOT add sonarQube here
-    }
-
     environment {
         GIT_CREDENTIALS = 'github-creds'
         SONAR_TOKEN     = credentials('sonar-token')
+        DOCKER_IMAGE    = "voting-app:latest" // Local Docker image
     }
 
     stages {
@@ -23,24 +17,29 @@ pipeline {
             }
         }
 
-        stage('Maven Build') {
-            steps {
-                sh 'mvn clean install'
-            }
-        }
-
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('Sonar') {
-                    sh "mvn sonar:sonar -Dsonar.login=${SONAR_TOKEN}"
+                    sh "sonar-scanner -Dsonar.login=${SONAR_TOKEN}"
                 }
             }
         }
 
-        stage('OWASP Dependency Check') {
+        stage('Build Docker Image') {
             steps {
-                dependencyCheck odcInstallation: 'ODC',
-                                additionalArguments: '--scan . --format HTML'
+                script {
+                    docker.build("${DOCKER_IMAGE}")
+                }
+            }
+        }
+
+        stage('Security Scan') {
+            steps {
+                // OWASP Dependency-Check scan
+                dependencyCheck additionalArguments: '--scan . --format HTML'
+
+                // Trivy scan for Docker image vulnerabilities
+                sh "trivy image --exit-code 1 --severity HIGH,CRITICAL ${DOCKER_IMAGE}"
             }
         }
 
@@ -51,7 +50,7 @@ pipeline {
             echo '✅ Pipeline completed successfully!'
         }
         failure {
-            echo '❌ Pipeline failed. Check the logs!'
+            echo '❌ Pipeline failed. Check logs!'
         }
     }
 }
