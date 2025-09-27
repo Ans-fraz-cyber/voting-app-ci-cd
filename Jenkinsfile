@@ -2,8 +2,7 @@ pipeline {
     agent any
 
     tools {
-        // Use the JDK you configured in Jenkins global tools
-        jdk 'jdk-21'
+        jdk 'jdk-21' // the name you configured in Jenkins
     }
 
     stages {
@@ -14,10 +13,6 @@ pipeline {
         }
 
         stage('SonarQube Scan') {
-            environment {
-                // This should match the SonarQube server configuration name in Jenkins
-                SONARQUBE_SERVER = 'SonarQube'
-            }
             steps {
                 withSonarQubeEnv('SonarQube') {
                     sh 'sonar-scanner'
