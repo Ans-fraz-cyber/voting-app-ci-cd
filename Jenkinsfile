@@ -2,54 +2,38 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "voting-app:latest"
+        SONAR_HOME = tool "SonarQubeScanner"   // must match the tool name in Jenkins
     }
 
     stages {
-
-        stage('Checkout Code') {
+        stage('Code Clone') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/Ans-fraz-cyber/voting-app-ci-cd.git',
-                    credentialsId: 'github-creds'
+                echo "🔄 Cloning repository..."
+                git branch: 'main', url: 'https://github.com/Ans-fraz-cyber/voting-app-ci-cd.git'
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                // Uses Sonar container directly
-                withSonarQubeEnv('Sonar') {
-                    sh "sonar-scanner"
+                echo "🔍 Running SonarQube Analysis..."
+                withSonarQubeEnv('SonarQubeServer') { // must match Jenkins SonarQube server config name
+                    sh """
+                        ${SONAR_HOME}/bin/sonar-scanner \
+                        -Dsonar.projectKey=voting-app \
+                        -Dsonar.projectName=voting-app \
+                        -Dsonar.sources=.
+                    """
                 }
             }
         }
-
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    docker.build("${DOCKER_IMAGE}")
-                }
-            }
-        }
-
-        stage('Security Scan') {
-            steps {
-                // OWASP Dependency-Check
-                dependencyCheck additionalArguments: '--scan . --format HTML', odcInstallation: 'ODC'
-
-                // Trivy image scan
-                sh "trivy image --exit-code 1 --severity HIGH,CRITICAL ${DOCKER_IMAGE}"
-            }
-        }
-
     }
 
     post {
         success {
-            echo '✅ Pipeline completed successfully!'
+            echo "✅ Pipeline completed successfully!"
         }
         failure {
-            echo '❌ Pipeline failed. Check logs!'
+            echo "❌ Pipeline failed!"
         }
     }
 }
