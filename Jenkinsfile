@@ -1,9 +1,13 @@
 pipeline {
     agent any
 
+    options {
+        skipDefaultCheckout(true)   // 👈 disables "Declarative: Checkout SCM"
+    }
+
     environment {
-        SONARQUBE = 'SonarQubeServer'        // must match the name in Jenkins > Configure System
-        SONAR_AUTH_TOKEN = credentials('sonar-token')  // 👈 maps your Jenkins credential ID
+        SONARQUBE = 'SonarQubeServer'        // must match Jenkins > Configure System
+        SONAR_AUTH_TOKEN = credentials('sonar-token')
     }
 
     stages {
@@ -19,7 +23,7 @@ pipeline {
                 echo "🔍 Running SonarQube Analysis..."
                 withSonarQubeEnv("${SONARQUBE}") {
                     script {
-                        def scannerHome = tool 'SonarQubeScanner'   // must match the name in Global Tool Configuration
+                        def scannerHome = tool 'SonarQubeScanner'
                         sh """
                             ${scannerHome}/bin/sonar-scanner \
                               -Dsonar.projectKey=voting-app \
@@ -51,6 +55,29 @@ pipeline {
                     trivy image --exit-code 0 --severity HIGH,CRITICAL voting-app-result:latest
                     trivy image --exit-code 0 --severity HIGH,CRITICAL voting-app-worker:latest
                 '''
+            }
+        }
+
+        stage('Push to DockerHub') {
+            steps {
+                script {
+                    echo "📤 Pushing images to DockerHub..."
+                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
+                        sh '''
+                            docker tag voting-app-vote:latest 31793179/voting-app-vote:${BUILD_NUMBER}
+                            docker tag voting-app-result:latest 31793179/voting-app-result:${BUILD_NUMBER}
+                            docker tag voting-app-worker:latest 31793179/voting-app-worker:${BUILD_NUMBER}
+
+                            docker push 31793179/voting-app-vote:${BUILD_NUMBER}
+                            docker push 31793179/voting-app-result:${BUILD_NUMBER}
+                            docker push 31793179/voting-app-worker:${BUILD_NUMBER}
+
+                            docker push 31793179/voting-app-vote:latest
+                            docker push 31793179/voting-app-result:latest
+                            docker push 31793179/voting-app-worker:latest
+                        '''
+                    }
+                }
             }
         }
     }
