@@ -64,10 +64,17 @@ pipeline {
                     echo "📤 Pushing images to DockerHub..."
                     docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
                         sh '''
+                            # Tag images with build number
                             docker tag voting-app-vote:latest 31793179/voting-app-vote:${BUILD_NUMBER}
                             docker tag voting-app-result:latest 31793179/voting-app-result:${BUILD_NUMBER}
                             docker tag voting-app-worker:latest 31793179/voting-app-worker:${BUILD_NUMBER}
 
+                            # Also tag them as :latest under DockerHub repo
+                            docker tag voting-app-vote:latest 31793179/voting-app-vote:latest
+                            docker tag voting-app-result:latest 31793179/voting-app-result:latest
+                            docker tag voting-app-worker:latest 31793179/voting-app-worker:latest
+
+                            # Push all tags
                             docker push 31793179/voting-app-vote:${BUILD_NUMBER}
                             docker push 31793179/voting-app-result:${BUILD_NUMBER}
                             docker push 31793179/voting-app-worker:${BUILD_NUMBER}
