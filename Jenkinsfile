@@ -1,12 +1,9 @@
 pipeline {
     agent any
 
-    tools {
-        SonarQubeScanner 'SonarQubeScanner'
-    }
-
     environment {
-        SONARQUBE = 'SonarQubeServer'
+        SONARQUBE = 'SonarQubeServer'        // must match the name in Jenkins > Configure System
+        SONAR_AUTH_TOKEN = credentials('sonar-token')  // 👈 maps your Jenkins credential ID
         IMAGE_NAME = "voting-app"
         IMAGE_TAG = "latest"
     }
@@ -23,12 +20,16 @@ pipeline {
             steps {
                 echo "🔍 Running SonarQube Analysis..."
                 withSonarQubeEnv("${SONARQUBE}") {
-                    sh '''
-                        sonar-scanner \
-                        -Dsonar.projectKey=voting-app \
-                        -Dsonar.projectName=voting-app \
-                        -Dsonar.sources=.
-                    '''
+                    script {
+                        def scannerHome = tool 'SonarQubeScanner'   // must match the name in Global Tool Configuration
+                        sh """
+                            ${scannerHome}/bin/sonar-scanner \
+                              -Dsonar.projectKey=voting-app \
+                              -Dsonar.projectName=voting-app \
+                              -Dsonar.sources=. \
+                              -Dsonar.login=${SONAR_AUTH_TOKEN}
+                        """
+                    }
                 }
             }
         }
