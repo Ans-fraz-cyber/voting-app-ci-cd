@@ -2,15 +2,13 @@ pipeline {
     agent any
 
     tools {
-        // Match the names exactly in Jenkins Global Tool Configuration
         jdk 'jdk-21'
         maven 'Maven'
         git 'Default'
-        sonarQube 'Sonar'
+        // DO NOT add sonarQube here
     }
 
     environment {
-        // Jenkins credentials IDs
         GIT_CREDENTIALS = 'github-creds'
         SONAR_TOKEN     = credentials('sonar-token')
     }
