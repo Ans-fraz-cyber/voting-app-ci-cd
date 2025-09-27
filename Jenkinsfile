@@ -91,10 +91,10 @@ pipeline {
 
     post {
         always {
-            emailext(
+            mail(
+                to: "ansfarazkp@gmail.com",
                 subject: "Jenkins Build Status: ${currentBuild.fullDisplayName}",
-                body: "The Jenkins build ${currentBuild.fullDisplayName} finished with status: ${currentBuild.currentResult}. Check details here: ${env.BUILD_URL}",
-                to: "ansfarazkp@gmail.com"
+                body: "The Jenkins build ${currentBuild.fullDisplayName} finished with status: ${currentBuild.currentResult}. Check details here: ${env.BUILD_URL}"
             )
         }
     }
