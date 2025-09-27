@@ -87,6 +87,27 @@ pipeline {
                 }
             }
         }
+
+        // 🚀 NEW DEPLOYMENT STAGE - ADDED AT THE END
+        stage('Deploy Application') {
+            steps {
+                echo "🚀 Deploying voting application..."
+                sh '''
+                    # Stop and remove existing containers
+                    docker compose down || true
+                    
+                    # Start all services
+                    docker compose up -d
+                    
+                    # Wait for services to be ready
+                    sleep 30
+                    
+                    # Check if containers are running
+                    echo "📊 Deployment status:"
+                    docker ps | grep voting-app
+                '''
+            }
+        }
     }
 
     post {
