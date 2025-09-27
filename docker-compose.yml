@@ -1,4 +1,7 @@
+version: "3.8"
+
 services:
+  # Postgres DB for voting app
   db:
     image: postgres:15-alpine
     environment:
@@ -10,6 +13,7 @@ services:
     networks:
       - back-tier
 
+  # Redis for voting app
   redis:
     image: redis:7-alpine
     ports:
@@ -17,6 +21,7 @@ services:
     networks:
       - back-tier
 
+  # Vote web app
   vote:
     build: ./vote
     ports:
@@ -30,6 +35,7 @@ services:
       - front-tier
       - back-tier
 
+  # Result web app
   result:
     build: ./result
     ports:
@@ -41,6 +47,7 @@ services:
       - front-tier
       - back-tier
 
+  # Worker
   worker:
     build: ./worker
     environment:
@@ -49,6 +56,7 @@ services:
     networks:
       - back-tier
 
+  # SonarQube DB
   sonarqube_db:
     image: postgres:15-alpine
     environment:
@@ -60,6 +68,7 @@ services:
     networks:
       - back-tier
 
+  # SonarQube
   sonarqube:
     image: sonarqube:community
     ports:
@@ -71,6 +80,19 @@ services:
     networks:
       - back-tier
 
+  # Jenkins
+ # jenkins:
+   # image: jenkins/jenkins:lts
+    #container_name: jenkins
+    #ports:
+     # - "8085:8080"
+      #- "50000:50000"
+   # volumes:
+     # - jenkins_home:/var/jenkins_home
+      #- /var/run/docker.sock:/var/run/docker.sock
+    #networks:
+     # - back-tier
+
 networks:
   front-tier:
   back-tier:
@@ -78,3 +100,4 @@ networks:
 volumes:
   db-data:
   sonarqube_db_data:
+  jenkins_home:

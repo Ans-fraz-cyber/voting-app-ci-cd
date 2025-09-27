@@ -1,0 +1,37 @@
+[33m32c50ee[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m Update Jenkinsfile to use host Docker for Compose build
+[33mc470256[m Add Build Application stage to Jenkinsfile
+[33mae6c877[m Add Build Application stage to Jenkinsfile
+[33me3068f7[m Add Build Application stage to Jenkinsfile
+[33mc193a18[m Add Build Application stage to Jenkinsfile
+[33m3d3b65d[m Add Build Application stage to Jenkinsfile
+[33mf2bab17[m Add Build Application stage to Jenkinsfile
+[33m468e2ac[m Add sonar-project.properties and update Jenkinsfile
+[33mcc72c71[m Add sonar-project.properties and update Jenkinsfile
+[33m9479a7d[m Fix docker compose command in Jenkinsfile
+[33mc73fd5b[m Fix docker compose command in Jenkinsfile
+[33md8b653c[m Fix docker compose command in Jenkinsfile
+[33mb85009b[m Fix docker compose command in Jenkinsfile
+[33mf87d008[m Fix docker compose command in Jenkinsfile
+[33mcaeadb8[m Fix docker compose command in Jenkinsfile
+[33m925a115[m Fix docker compose command in Jenkinsfile
+[33m85af207[m Fix docker compose command in Jenkinsfile
+[33m3b4b747[m Fix docker compose command in Jenkinsfile
+[33m2e0c7bf[m Fix docker compose command in Jenkinsfile
+[33md544d02[m Fix docker compose command in Jenkinsfile
+[33m9b3e5fc[m Fix docker compose command in Jenkinsfile
+[33mb49c039[m Clean Jenkinsfile: 4 stages - Checkout, SonarQube, Build & Docker, Trivy
+[33m1a03fdd[m Update Jenkinsfile: SonarQube + Docker + Trivy pipeline
+[33mc9e8a80[m Fix Jenkinsfile: clean version without test stage
+[33m0eb34c5[m Fix pipeline - move Run Tests stage inside stages block
+[33m9f9b62b[m Add test stage to Jenkins pipeline
+[33m631d7e8[m Add Jenkins pipeline
+[33m9517782[m Fix Jenkinsfile - simplify for initial setup
+[33m313f66c[m Add Jenkins pipeline with checkout and SonarQube stages
+[33m7f47c78[m Add Jenkins pipeline
+[33m7cbd21c[m FIX: Proper SonarQube configuration
+[33m7a50cf2[m FIX: Proper SonarQube configuration
+[33m3506bf2[m fix: Add proper SonarQube configuration
+[33m539bf5a[m fix: Add diagnostic commands and fix Docker build paths
+[33mf14c3cc[m fix: Add diagnostic commands and fix Docker build paths
+[33m4613843[m fix: Add diagnostic commands and fix Docker build paths
+[33m5654ee0[m fix: Add diagnostic commands and fix Docker build paths

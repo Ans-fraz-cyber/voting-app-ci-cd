@@ -1,29 +1,53 @@
 pipeline {
     agent any
 
+    tools {
+        sonarScanner 'SonarQubeScanner'
+    }
+
     environment {
-        SONAR_HOME = tool "SonarQubeScanner"   // must match the tool name in Jenkins
+        SONARQUBE = 'SonarQubeServer'
+        IMAGE_NAME = "voting-app"
+        IMAGE_TAG = "latest"
     }
 
     stages {
         stage('Code Clone') {
             steps {
                 echo "🔄 Cloning repository..."
-                git branch: 'main', url: 'https://github.com/Ans-fraz-cyber/voting-app-ci-cd.git'
+                git url: 'https://github.com/Ans-fraz-cyber/voting-app-ci-cd.git', branch: 'main'
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
                 echo "🔍 Running SonarQube Analysis..."
-                withSonarQubeEnv('SonarQubeServer') { // must match Jenkins SonarQube server config name
-                    sh """
-                        ${SONAR_HOME}/bin/sonar-scanner \
+                withSonarQubeEnv("${SONARQUBE}") {
+                    sh '''
+                        sonar-scanner \
                         -Dsonar.projectKey=voting-app \
                         -Dsonar.projectName=voting-app \
                         -Dsonar.sources=.
-                    """
+                    '''
                 }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                echo "🐳 Building Docker image..."
+                sh '''
+                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                '''
+            }
+        }
+
+        stage('Trivy Scan') {
+            steps {
+                echo "🔎 Running Trivy vulnerability scan..."
+                sh '''
+                    trivy image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_NAME}:${IMAGE_TAG}
+                '''
             }
         }
     }
