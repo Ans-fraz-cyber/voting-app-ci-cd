@@ -35,8 +35,8 @@ pipeline {
 
         stage('Security Scan') {
             steps {
-                // OWASP Dependency-Check scan
-                dependencyCheck additionalArguments: '--scan . --format HTML'
+                // OWASP Dependency-Check scan with configured tool
+                dependencyCheck additionalArguments: '--scan . --format HTML', odcInstallation: 'ODC'
 
                 // Trivy scan for Docker image vulnerabilities
                 sh "trivy image --exit-code 1 --severity HIGH,CRITICAL ${DOCKER_IMAGE}"
