@@ -90,20 +90,10 @@ pipeline {
     }
 
     post {
-        success {
-            echo "✅ Pipeline completed successfully!"
-            // Optional: send email on success
-            // emailext(
-            //     subject: "Jenkins Build Succeeded: ${currentBuild.fullDisplayName}",
-            //     body: "The build ${currentBuild.fullDisplayName} succeeded! Check details at ${env.BUILD_URL}",
-            //     to: "ansfarazkp@gmail.com"
-            // )
-        }
-        failure {
-            echo "❌ Pipeline failed!"
+        always {
             emailext(
-                subject: "Jenkins Build Failed: ${currentBuild.fullDisplayName}",
-                body: "The Jenkins build ${currentBuild.fullDisplayName} has failed. Check details here: ${env.BUILD_URL}",
+                subject: "Jenkins Build Status: ${currentBuild.fullDisplayName}",
+                body: "The Jenkins build ${currentBuild.fullDisplayName} finished with status: ${currentBuild.currentResult}. Check details here: ${env.BUILD_URL}",
                 to: "ansfarazkp@gmail.com"
             )
         }
