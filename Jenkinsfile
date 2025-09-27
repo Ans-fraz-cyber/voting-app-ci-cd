@@ -2,16 +2,14 @@ pipeline {
     agent any
 
     tools {
-        // Make sure these names exactly match your Global Tool Configuration
         jdk 'jdk-21'
-        maven 'Maven'        // Your Maven installation name
-        git 'Default'         // Your Git installation name
-        dependencyCheck 'ODC' // Name you gave for OWASP Dependency-Check
-        sonarQube 'Sonar'     // SonarQube Scanner installation name
+        maven 'Maven'
+        git 'Default'
+        dependency-check 'ODC' // Tool type fixed
+        sonar 'Sonar'           // Tool type fixed
     }
 
     environment {
-        // Use Jenkins credentials IDs
         GIT_CREDENTIALS = 'github-creds'
         SONAR_TOKEN     = credentials('sonar-token')
     }
