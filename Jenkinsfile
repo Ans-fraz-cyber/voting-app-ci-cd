@@ -1,59 +1,52 @@
 pipeline {
     agent any
 
+    tools {
+        // Make sure these names exactly match your Global Tool Configuration
+        jdk 'jdk-21'
+        maven 'Maven'        // Your Maven installation name
+        git 'Default'         // Your Git installation name
+        dependencyCheck 'ODC' // Name you gave for OWASP Dependency-Check
+        sonarQube 'Sonar'     // SonarQube Scanner installation name
+    }
+
     environment {
+        // Use Jenkins credentials IDs
         GIT_CREDENTIALS = 'github-creds'
-        SONAR_TOKEN = credentials('sonar-token')
+        SONAR_TOKEN     = credentials('sonar-token')
     }
 
     stages {
 
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
-                git(
-                    branch: 'main',
+                git branch: 'main',
                     url: 'https://github.com/Ans-fraz-cyber/voting-app-ci-cd.git',
                     credentialsId: "${GIT_CREDENTIALS}"
-                )
             }
         }
 
-        stage('Build') {
+        stage('Maven Build') {
             steps {
-                echo 'Building the application...'
-                // Example: For Node.js project
-                sh 'npm install'
-                sh 'npm run build'
+                sh 'mvn clean install'
             }
         }
 
         stage('SonarQube Analysis') {
-            environment {
-                SONAR_HOST_URL = 'http://localhost:9000'  // Your SonarQube URL
-            }
             steps {
-                echo 'Running SonarQube Scanner...'
                 withSonarQubeEnv('Sonar') {
-                    sh 'sonar-scanner -Dsonar.login=${SONAR_TOKEN}'
+                    sh "mvn sonar:sonar -Dsonar.login=${SONAR_TOKEN}"
                 }
             }
         }
 
-        stage('OWASP Dependency-Check') {
+        stage('OWASP Dependency Check') {
             steps {
-                echo 'Running OWASP Dependency-Check...'
-                // Assuming you installed Dependency-Check plugin
-                dependencyCheck additionalArguments: '--scan . --format HTML'
+                dependencyCheck odcInstallation: 'ODC',
+                                additionalArguments: '--scan . --format HTML'
             }
         }
 
-        stage('Test') {
-            steps {
-                echo 'Running tests...'
-                // Example: For Node.js project
-                sh 'npm test'
-            }
-        }
     }
 
     post {
@@ -61,7 +54,7 @@ pipeline {
             echo 'Pipeline completed successfully!'
         }
         failure {
-            echo 'Pipeline failed!'
+            echo 'Pipeline failed. Check the logs.'
         }
     }
 }
