@@ -2,14 +2,15 @@ pipeline {
     agent any
 
     tools {
+        // Match the names exactly in Jenkins Global Tool Configuration
         jdk 'jdk-21'
         maven 'Maven'
         git 'Default'
-        dependency-check 'ODC' // Tool type fixed
-        sonar 'Sonar'           // Tool type fixed
+        sonarQube 'Sonar'
     }
 
     environment {
+        // Jenkins credentials IDs
         GIT_CREDENTIALS = 'github-creds'
         SONAR_TOKEN     = credentials('sonar-token')
     }
@@ -49,10 +50,10 @@ pipeline {
 
     post {
         success {
-            echo 'Pipeline completed successfully!'
+            echo '✅ Pipeline completed successfully!'
         }
         failure {
-            echo 'Pipeline failed. Check the logs.'
+            echo '❌ Pipeline failed. Check the logs!'
         }
     }
 }
