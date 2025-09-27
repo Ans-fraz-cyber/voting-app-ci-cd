@@ -3,8 +3,8 @@ pipeline {
 
     environment {
         GIT_CREDENTIALS = 'github-creds'
-        SONAR_TOKEN     = credentials('sonar-token')
-        DOCKER_IMAGE    = "voting-app:latest" // Local Docker image
+        SONAR_HOME     = tool 'Sonar' // Jenkins global tool for Sonar
+        DOCKER_IMAGE   = "voting-app:latest"
     }
 
     stages {
@@ -20,7 +20,7 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('Sonar') {
-                    sh "sonar-scanner -Dsonar.login=${SONAR_TOKEN}"
+                    sh "${SONAR_HOME}/bin/sonar-scanner -Dsonar.login=${SONAR_TOKEN}"
                 }
             }
         }
@@ -35,7 +35,7 @@ pipeline {
 
         stage('Security Scan') {
             steps {
-                // OWASP Dependency-Check scan with configured tool
+                // OWASP Dependency-Check scan
                 dependencyCheck additionalArguments: '--scan . --format HTML', odcInstallation: 'ODC'
 
                 // Trivy scan for Docker image vulnerabilities
