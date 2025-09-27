@@ -2,9 +2,7 @@ pipeline {
     agent any
 
     environment {
-        GIT_CREDENTIALS = 'github-creds'
-        SONAR_HOME     = tool 'Sonar' // Jenkins global tool for Sonar
-        DOCKER_IMAGE   = "voting-app:latest"
+        DOCKER_IMAGE = "voting-app:latest"
     }
 
     stages {
@@ -13,14 +11,15 @@ pipeline {
             steps {
                 git branch: 'main',
                     url: 'https://github.com/Ans-fraz-cyber/voting-app-ci-cd.git',
-                    credentialsId: "${GIT_CREDENTIALS}"
+                    credentialsId: 'github-creds'
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
+                // Uses Sonar container directly
                 withSonarQubeEnv('Sonar') {
-                    sh "${SONAR_HOME}/bin/sonar-scanner -Dsonar.login=${SONAR_TOKEN}"
+                    sh "sonar-scanner"
                 }
             }
         }
@@ -35,10 +34,10 @@ pipeline {
 
         stage('Security Scan') {
             steps {
-                // OWASP Dependency-Check scan
+                // OWASP Dependency-Check
                 dependencyCheck additionalArguments: '--scan . --format HTML', odcInstallation: 'ODC'
 
-                // Trivy scan for Docker image vulnerabilities
+                // Trivy image scan
                 sh "trivy image --exit-code 1 --severity HIGH,CRITICAL ${DOCKER_IMAGE}"
             }
         }
