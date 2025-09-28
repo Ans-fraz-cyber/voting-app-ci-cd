@@ -8,15 +8,16 @@ pipeline {
     }
 
     environment {
-        SONARQUBE = 'SonarQubeServer'
-        SONAR_AUTH_TOKEN = credentials('sonar-token')
-        DOCKERHUB_NAMESPACE = '31793179'
+        IMAGE_VOTE = "voting-app-vote"
+        IMAGE_RESULT = "voting-app-result" 
+        IMAGE_WORKER = "voting-app-worker"
+        DOCKERHUB_NAMESPACE = "31793179"
     }
 
     stages {
         stage('Code Clone') {
             steps {
-                echo "🔄 Cloning private repository..."
+                echo "🔄 Cloning repository..."
                 git(
                     url: 'https://github.com/Ans-fraz-cyber/voting-app-ci-cd.git',
                     branch: 'main',
@@ -27,7 +28,7 @@ pipeline {
 
         stage('SonarQube Code Analysis') {
             steps {
-                echo "🔍 Running SonarQube Code Analysis..."
+                echo "🔍 Running SonarQube Analysis..."
                 withSonarQubeEnv("${SONARQUBE}") {
                     script {
                         def scannerHome = tool 'SonarQubeScanner'
@@ -46,17 +47,8 @@ pipeline {
         stage('SonarQube Quality Gate') {
             steps {
                 echo "✅ Checking SonarQube Quality Gate..."
-                script {
-                    // Try to wait for quality gate, but continue if it takes too long
-                    try {
-                        timeout(time: 3, unit: 'MINUTES') {
-                            waitForQualityGate abortPipeline: false
-                        }
-                        echo "✅ Quality Gate: COMPLETED"
-                    } catch (Exception e) {
-                        echo "⚠️ Quality Gate: Still processing... Continuing pipeline"
-                        echo "📊 SonarQube analysis submitted. Check results later at: http://localhost:9000/dashboard?id=voting-app"
-                    }
+                timeout(time: 10, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }
@@ -65,99 +57,56 @@ pipeline {
             steps {
                 echo "🐳 Building Docker images..."
                 script {
-                    def services = ['vote', 'result', 'worker']
-                    
-                    services.each { service ->
-                        echo "Building ${service} service..."
-                        sh "docker build -t voting-app-${service}:latest ./${service}"
-                        echo "✅ ${service} built successfully"
-                    }
+                    sh """
+                        docker build -t ${IMAGE_VOTE}:${BUILD_NUMBER} ./vote
+                        docker build -t ${IMAGE_RESULT}:${BUILD_NUMBER} ./result  
+                        docker build -t ${IMAGE_WORKER}:${BUILD_NUMBER} ./worker
+                    """
                 }
             }
         }
 
-        stage('Container Security Scan - Trivy') {
-            steps {
-                echo "🔒 Running Container Security Scan - Trivy..."
-                script {
-                    sh 'rm -rf security-reports || true'
-                    sh 'mkdir -p security-reports'
-                    
-                    def images = [
-                        'vote': 'voting-app-vote:latest',
-                        'result': 'voting-app-result:latest', 
-                        'worker': 'voting-app-worker:latest'
-                    ]
-                    
-                    images.each { service, image ->
-                        echo "📊 Security Scanning: ${service}"
-                        
-                        // Generate HTML Report
-                        sh """
-                            trivy image \
-                                --exit-code 0 \
-                                --severity HIGH,CRITICAL \
-                                --format html \
-                                --output security-reports/${service}-security-report.html \
-                                ${image}
-                        """
-                        
-                        echo "✅ ${service} security scan completed"
-                    }
-                    
-                    // Create security dashboard
-                    sh '''
-                        echo "<html><head><title>Security Gates Report</title></head>" > security-reports/security-dashboard.html
-                        echo "<body><h1>🛡️ Security Gates Dashboard</h1>" >> security-reports/security-dashboard.html
-                        echo "<h2>✅ Security Scans Status</h2>" >> security-reports/security-dashboard.html
-                        echo "<ul>" >> security-reports/security-dashboard.html
-                        echo "<li><strong>Code Analysis:</strong> SonarQube analysis submitted</li>" >> security-reports/security-dashboard.html
-                        echo "<li><strong>Container Security:</strong> ✅ Completed</li>" >> security-reports/security-dashboard.html
-                        echo "</ul>" >> security-reports/security-dashboard.html
-                        echo "<h3>📊 Container Security Reports:</h3>" >> security-reports/security-dashboard.html
-                        echo "<ul>" >> security-reports/security-dashboard.html
-                        echo "<li><a href='vote-security-report.html'>Vote Service Security Report</a></li>" >> security-reports/security-dashboard.html
-                        echo "<li><a href='result-security-report.html'>Result Service Security Report</a></li>" >> security-reports/security-dashboard.html
-                        echo "<li><a href='worker-security-report.html'>Worker Service Security Report</a></li>" >> security-reports/security-dashboard.html
-                        echo "</ul>" >> security-reports/security-dashboard.html
-                        echo "<p><strong>SonarQube Report:</strong> <a href='http://localhost:9000/dashboard?id=voting-app'>View Code Analysis Results</a></p>" >> security-reports/security-dashboard.html
-                        echo "<p><em>Generated on: $(date)</em></p></body></html>" >> security-reports/security-dashboard.html
-                    '''
-                }
-            }
-            
-            post {
-                always {
-                    archiveArtifacts artifacts: 'security-reports/**', fingerprint: true
-                    publishHTML([
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'security-reports',
-                        reportFiles: 'security-dashboard.html',
-                        reportName: '🛡️ Security Gates Dashboard'
-                    ])
-                }
-            }
-        }
-
-        stage('Push to DockerHub') {
-            steps {
-                script {
-                    echo "📤 Pushing images to DockerHub..."
-                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
-                        def images = ['vote', 'result', 'worker']
-                        
-                        images.each { service ->
+        stage('Security Scan and Push') {
+            parallel {
+                stage('Trivy Security Scan') {
+                    steps {
+                        echo "🔒 Running Trivy Security Scan..."
+                        script {
+                            // Create proper HTML reports using template
                             sh """
-                                docker tag voting-app-${service}:latest ${env.DOCKERHUB_NAMESPACE}/voting-app-${service}:${env.BUILD_NUMBER}
-                                docker tag voting-app-${service}:latest ${env.DOCKERHUB_NAMESPACE}/voting-app-${service}:latest
-                                
-                                docker push ${env.DOCKERHUB_NAMESPACE}/voting-app-${service}:${env.BUILD_NUMBER}
-                                docker push ${env.DOCKERHUB_NAMESPACE}/voting-app-${service}:latest
-                                
-                                echo "✅ ${service} image pushed successfully"
+                                trivy image --format template --template "@/usr/local/share/trivy/templates/html.tpl" -o trivy-vote-report.html ${IMAGE_VOTE}:${BUILD_NUMBER} || trivy image --format table -o trivy-vote-report.txt ${IMAGE_VOTE}:${BUILD_NUMBER}
+                                trivy image --format template --template "@/usr/local/share/trivy/templates/html.tpl" -o trivy-result-report.html ${IMAGE_RESULT}:${BUILD_NUMBER} || trivy image --format table -o trivy-result-report.txt ${IMAGE_RESULT}:${BUILD_NUMBER}
+                                trivy image --format template --template "@/usr/local/share/trivy/templates/html.tpl" -o trivy-worker-report.html ${IMAGE_WORKER}:${BUILD_NUMBER} || trivy image --format table -o trivy-worker-report.txt ${IMAGE_WORKER}:${BUILD_NUMBER}
                             """
+                            // Archive both HTML and TXT reports
+                            archiveArtifacts artifacts: 'trivy-*.*', fingerprint: true
+                        }
+                    }
+                }
+                
+                stage('Push to DockerHub') {
+                    steps {
+                        echo "📤 Pushing images to DockerHub..."
+                        script {
+                            docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
+                                sh """
+                                    docker tag ${IMAGE_VOTE}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
+                                    docker tag ${IMAGE_RESULT}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
+                                    docker tag ${IMAGE_WORKER}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
+
+                                    docker tag ${IMAGE_VOTE}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-vote:latest
+                                    docker tag ${IMAGE_RESULT}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-result:latest  
+                                    docker tag ${IMAGE_WORKER}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-worker:latest
+
+                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
+                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
+                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
+
+                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:latest
+                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:latest
+                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:latest
+                                """
+                            }
                         }
                     }
                 }
@@ -167,7 +116,7 @@ pipeline {
         stage('Deploy Application') {
             steps {
                 echo "🚀 Deploying voting application..."
-                sh '''
+                sh """
                     docker-compose down || true
                     docker-compose up -d --force-recreate
                     sleep 20
@@ -176,7 +125,7 @@ pipeline {
                     echo "🌐 Application URLs:"
                     echo "Vote: http://localhost:5000"
                     echo "Result: http://localhost:5001"
-                '''
+                """
             }
         }
     }
@@ -186,37 +135,19 @@ pipeline {
             echo "🧹 Cleaning up workspace..."
             cleanWs()
             
-            script {
-                def sonarStatus = currentBuild.result == 'SUCCESS' ? "Analysis submitted - Check SonarQube dashboard" : "Analysis in progress"
-                
-                mail(
-                    to: "ansfarazkp@gmail.com",
-                    subject: "Build ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                    body: """
-                    Pipeline Execution Complete!
-                    
-                    Project: ${env.JOB_NAME}
-                    Build: #${env.BUILD_NUMBER}
-                    Status: ${currentBuild.currentResult}
-                    
-                    Build URL: ${env.BUILD_URL}
-                    Security Dashboard: ${env.BUILD_URL}security-gates-dashboard/
-                    
-                    SonarQube Status: ${sonarStatus}
-                    SonarQube URL: http://localhost:9000/dashboard?id=voting-app
-                    
-                    Deployment:
-                    - Vote: http://localhost:5000
-                    - Result: http://localhost:5001
-                    """
-                )
-            }
+            mail(
+                to: "ansfarazkp@gmail.com",
+                subject: "Build ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: "Build ${currentBuild.currentResult}. Check details: ${env.BUILD_URL}"
+            )
         }
         
         success {
             echo "🎉 Pipeline executed successfully!"
-            echo "📊 SonarQube analysis submitted. Check: http://localhost:9000/dashboard?id=voting-app"
-            echo "🛡️ Container security scans completed successfully"
+        }
+        
+        failure {
+            echo "❌ Pipeline failed!"
         }
     }
 }
