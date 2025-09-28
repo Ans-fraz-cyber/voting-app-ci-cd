@@ -80,11 +80,17 @@ pipeline {
                         echo "🔒 Running Trivy Security Scan..."
                         script {
                             sh """
+                                # Generate both table format (for console) and HTML format (for reports)
                                 trivy image --format table ${IMAGE_VOTE}:${BUILD_NUMBER} > trivy-vote.txt
+                                trivy image --format template --template "@html.tpl" -o trivy-vote.html ${IMAGE_VOTE}:${BUILD_NUMBER}
+                                
                                 trivy image --format table ${IMAGE_RESULT}:${BUILD_NUMBER} > trivy-result.txt
+                                trivy image --format template --template "@html.tpl" -o trivy-result.html ${IMAGE_RESULT}:${BUILD_NUMBER}
+                                
                                 trivy image --format table ${IMAGE_WORKER}:${BUILD_NUMBER} > trivy-worker.txt
+                                trivy image --format template --template "@html.tpl" -o trivy-worker.html ${IMAGE_WORKER}:${BUILD_NUMBER}
                             """
-                            archiveArtifacts artifacts: 'trivy-*.txt', fingerprint: true
+                            archiveArtifacts artifacts: 'trivy-*.txt,trivy-*.html', fingerprint: true
                         }
                     }
                 }
@@ -134,6 +140,17 @@ pipeline {
 
     post {
         always {
+            // Publish HTML reports
+            publishHTML([
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '',
+                reportFiles: 'trivy-vote.html,trivy-result.html,trivy-worker.html',
+                reportName: 'Trivy Security Reports',
+                reportTitles: 'Trivy Security Scan Results'
+            ])
+            
             cleanWs()
             
             mail(
