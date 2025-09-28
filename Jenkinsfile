@@ -8,6 +8,8 @@ pipeline {
     }
 
     environment {
+        SONARQUBE = 'SonarQubeServer'
+        SONAR_AUTH_TOKEN = credentials('sonar-token')
         IMAGE_VOTE = "voting-app-vote"
         IMAGE_RESULT = "voting-app-result" 
         IMAGE_WORKER = "voting-app-worker"
@@ -72,14 +74,13 @@ pipeline {
                     steps {
                         echo "🔒 Running Trivy Security Scan..."
                         script {
-                            // Create proper HTML reports using template
                             sh """
-                                trivy image --format template --template "@/usr/local/share/trivy/templates/html.tpl" -o trivy-vote-report.html ${IMAGE_VOTE}:${BUILD_NUMBER} || trivy image --format table -o trivy-vote-report.txt ${IMAGE_VOTE}:${BUILD_NUMBER}
-                                trivy image --format template --template "@/usr/local/share/trivy/templates/html.tpl" -o trivy-result-report.html ${IMAGE_RESULT}:${BUILD_NUMBER} || trivy image --format table -o trivy-result-report.txt ${IMAGE_RESULT}:${BUILD_NUMBER}
-                                trivy image --format template --template "@/usr/local/share/trivy/templates/html.tpl" -o trivy-worker-report.html ${IMAGE_WORKER}:${BUILD_NUMBER} || trivy image --format table -o trivy-worker-report.txt ${IMAGE_WORKER}:${BUILD_NUMBER}
+                                trivy image --format table -o trivy-vote-report.txt ${IMAGE_VOTE}:${BUILD_NUMBER}
+                                trivy image --format table -o trivy-result-report.txt ${IMAGE_RESULT}:${BUILD_NUMBER}
+                                trivy image --format table -o trivy-worker-report.txt ${IMAGE_WORKER}:${BUILD_NUMBER}
                             """
-                            // Archive both HTML and TXT reports
-                            archiveArtifacts artifacts: 'trivy-*.*', fingerprint: true
+                            // Archive the reports
+                            archiveArtifacts artifacts: 'trivy-*.txt', fingerprint: true
                         }
                     }
                 }
