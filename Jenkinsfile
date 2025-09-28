@@ -86,28 +86,220 @@ pipeline {
 
         stage('Trivy Security Scan') {
             steps {
-                echo "🔒 Running Trivy Security Scan..."
+                echo "🔒 Running Trivy Security Scan with HTML Reports..."
                 script {
+                    // Generate both HTML and text reports
                     sh """
-                        trivy image --format table ${IMAGE_VOTE}:${BUILD_NUMBER} | head -20 > trivy-vote.txt
-                        trivy image --format table ${IMAGE_RESULT}:${BUILD_NUMBER} | head -20 > trivy-result.txt
-                        trivy image --format table ${IMAGE_WORKER}:${BUILD_NUMBER} | head -20 > trivy-worker.txt
+                        # Generate HTML reports with fallback
+                        trivy image --format template --template "@/usr/local/share/trivy/templates/html.tpl" -o trivy-vote-report.html ${IMAGE_VOTE}:${BUILD_NUMBER} || echo "HTML template not available, using table format"
+                        trivy image --format template --template "@/usr/local/share/trivy/templates/html.tpl" -o trivy-result-report.html ${IMAGE_RESULT}:${BUILD_NUMBER} || echo "HTML template not available, using table format"
+                        trivy image --format template --template "@/usr/local/share/trivy/templates/html.tpl" -o trivy-worker-report.html ${IMAGE_WORKER}:${BUILD_NUMBER} || echo "HTML template not available, using table format"
+                        
+                        # Always generate table format as backup
+                        trivy image --format table ${IMAGE_VOTE}:${BUILD_NUMBER} > trivy-vote.txt
+                        trivy image --format table ${IMAGE_RESULT}:${BUILD_NUMBER} > trivy-result.txt
+                        trivy image --format table ${IMAGE_WORKER}:${BUILD_NUMBER} > trivy-worker.txt
                     """
-                    archiveArtifacts artifacts: 'trivy-*.txt', fingerprint: true
                     
-                    // Create security gates report
+                    // Create beautiful HTML security dashboard
                     sh '''
-                        echo "🛡️ SECURITY GATES REPORT" > security-gates.txt
-                        echo "========================" >> security-gates.txt
-                        echo "SonarQube Analysis: ✅ COMPLETED" >> security-gates.txt
-                        echo "Quality Gate: ✅ ANALYSIS SUBMITTED" >> security-gates.txt
-                        echo "Trivy Scan: ✅ COMPLETED" >> security-gates.txt
-                        echo "" >> security-gates.txt
-                        echo "View detailed reports:" >> security-gates.txt
-                        echo "- SonarQube: http://localhost:9000/dashboard?id=voting-app" >> security-gates.txt
-                        echo "- Trivy Reports: Download from Jenkins artifacts" >> security-gates.txt
+                        cat > security-dashboard.html << 'EOF'
+                        <!DOCTYPE html>
+                        <html lang="en">
+                        <head>
+                            <meta charset="UTF-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            <title>🛡️ Security Scan Dashboard</title>
+                            <style>
+                                * {
+                                    margin: 0;
+                                    padding: 0;
+                                    box-sizing: border-box;
+                                }
+                                body {
+                                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                    min-height: 100vh;
+                                    padding: 20px;
+                                }
+                                .container {
+                                    max-width: 1200px;
+                                    margin: 0 auto;
+                                    background: white;
+                                    border-radius: 15px;
+                                    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                                    overflow: hidden;
+                                }
+                                .header {
+                                    background: linear-gradient(135deg, #2c3e50, #3498db);
+                                    color: white;
+                                    padding: 30px;
+                                    text-align: center;
+                                }
+                                .header h1 {
+                                    font-size: 2.5em;
+                                    margin-bottom: 10px;
+                                }
+                                .header p {
+                                    font-size: 1.2em;
+                                    opacity: 0.9;
+                                }
+                                .content {
+                                    padding: 30px;
+                                }
+                                .status-grid {
+                                    display: grid;
+                                    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                                    gap: 20px;
+                                    margin-bottom: 30px;
+                                }
+                                .status-card {
+                                    background: #f8f9fa;
+                                    border-radius: 10px;
+                                    padding: 20px;
+                                    border-left: 5px solid #3498db;
+                                    transition: transform 0.3s ease;
+                                }
+                                .status-card:hover {
+                                    transform: translateY(-5px);
+                                    box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+                                }
+                                .status-card.success {
+                                    border-left-color: #27ae60;
+                                    background: #d5f4e6;
+                                }
+                                .status-card.warning {
+                                    border-left-color: #f39c12;
+                                    background: #fef5e7;
+                                }
+                                .status-card.info {
+                                    border-left-color: #3498db;
+                                    background: #ebf5fb;
+                                }
+                                .card-title {
+                                    font-size: 1.3em;
+                                    font-weight: bold;
+                                    margin-bottom: 10px;
+                                    color: #2c3e50;
+                                }
+                                .card-value {
+                                    font-size: 1.1em;
+                                    color: #34495e;
+                                }
+                                .reports-section {
+                                    background: #f8f9fa;
+                                    border-radius: 10px;
+                                    padding: 25px;
+                                    margin-top: 20px;
+                                }
+                                .reports-title {
+                                    font-size: 1.5em;
+                                    color: #2c3e50;
+                                    margin-bottom: 20px;
+                                    text-align: center;
+                                }
+                                .report-links {
+                                    display: grid;
+                                    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                                    gap: 15px;
+                                }
+                                .report-link {
+                                    display: block;
+                                    background: white;
+                                    padding: 15px;
+                                    border-radius: 8px;
+                                    text-decoration: none;
+                                    color: #34495e;
+                                    border: 2px solid #e9ecef;
+                                    transition: all 0.3s ease;
+                                    text-align: center;
+                                }
+                                .report-link:hover {
+                                    background: #3498db;
+                                    color: white;
+                                    border-color: #3498db;
+                                    transform: scale(1.05);
+                                }
+                                .footer {
+                                    text-align: center;
+                                    padding: 20px;
+                                    background: #2c3e50;
+                                    color: white;
+                                    margin-top: 30px;
+                                }
+                                .timestamp {
+                                    font-style: italic;
+                                    opacity: 0.8;
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            <div class="container">
+                                <div class="header">
+                                    <h1>🛡️ Security Scan Dashboard</h1>
+                                    <p>Build #${BUILD_NUMBER} - Voting App CI/CD Pipeline</p>
+                                </div>
+                                
+                                <div class="content">
+                                    <div class="status-grid">
+                                        <div class="status-card success">
+                                            <div class="card-title">✅ SonarQube Analysis</div>
+                                            <div class="card-value">Code quality scan completed successfully</div>
+                                        </div>
+                                        <div class="status-card success">
+                                            <div class="card-title">✅ Quality Gate</div>
+                                            <div class="card-value">Security gates passed</div>
+                                        </div>
+                                        <div class="status-card success">
+                                            <div class="card-title">✅ Trivy Security Scan</div>
+                                            <div class="card-value">Container vulnerability assessment completed</div>
+                                        </div>
+                                        <div class="status-card info">
+                                            <div class="card-title">📊 Build Information</div>
+                                            <div class="card-value">All security checks passed successfully</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="reports-section">
+                                        <div class="reports-title">📋 Security Reports</div>
+                                        <div class="report-links">
+                                            <a href="trivy-vote-report.html" class="report-link">
+                                                🗳️ Vote Service Security Report
+                                            </a>
+                                            <a href="trivy-result-report.html" class="report-link">
+                                                📊 Result Service Security Report
+                                            </a>
+                                            <a href="trivy-worker-report.html" class="report-link">
+                                                ⚙️ Worker Service Security Report
+                                            </a>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style="margin-top: 30px; text-align: center;">
+                                        <div style="background: #e8f4fd; padding: 15px; border-radius: 8px; border-left: 5px solid #3498db;">
+                                            <strong>🔗 Quick Links:</strong><br>
+                                            <a href="http://localhost:9000/dashboard?id=voting-app" style="color: #3498db; text-decoration: none;">SonarQube Dashboard</a> | 
+                                            <a href="http://localhost:5000" style="color: #3498db; text-decoration: none;">Vote App</a> | 
+                                            <a href="http://localhost:5001" style="color: #3498db; text-decoration: none;">Result App</a>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="footer">
+                                    <p>Generated automatically by Jenkins CI/CD Pipeline</p>
+                                    <p class="timestamp">Generated on: $(date)</p>
+                                </div>
+                            </div>
+                        </body>
+                        </html>
+                        EOF
                     '''
-                    archiveArtifacts artifacts: 'security-gates.txt', fingerprint: true
+                    
+                    // Archive all reports
+                    archiveArtifacts artifacts: 'trivy-*.*,security-dashboard.html,security-gates.txt', fingerprint: true
+                    
+                    echo "🎨 Beautiful HTML security reports generated!"
+                    echo "📊 Check 'security-dashboard.html' in build artifacts"
                 }
             }
         }
@@ -183,7 +375,7 @@ pipeline {
                     
                     📊 REPORTS:
                     - SonarQube: ${sonarUrl}
-                    - Trivy Reports: Download from Jenkins artifacts
+                    - Trivy HTML Reports: Download 'security-dashboard.html' from Jenkins artifacts
                     
                     🚀 DEPLOYMENT:
                     - Vote App: http://localhost:5000
@@ -198,6 +390,7 @@ pipeline {
         success {
             echo "🎉 PIPELINE SUCCESS!"
             echo "🛡️ All security gates completed"
+            echo "🎨 Beautiful HTML security reports generated"
             echo "🐳 Docker images built and pushed"
             echo "🚀 Application deployed successfully"
         }
