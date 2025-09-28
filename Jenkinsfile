@@ -28,9 +28,9 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
+        stage('SonarQube Code Analysis') {
             steps {
-                echo "🔍 Running SonarQube Analysis..."
+                echo "🔍 Running SonarQube Code Analysis..."
                 withSonarQubeEnv("${SONARQUBE}") {
                     script {
                         def scannerHome = tool 'SonarQubeScanner'
@@ -39,7 +39,6 @@ pipeline {
                               -Dsonar.projectKey=voting-app \
                               -Dsonar.projectName=voting-app \
                               -Dsonar.sources=. \
-                              -Dsonar.host.url=\${SONAR_HOST_URL} \
                               -Dsonar.login=${SONAR_AUTH_TOKEN}
                         """
                     }
@@ -47,11 +46,12 @@ pipeline {
             }
         }
 
-        stage("SonarQube Quality Gate") {
+        stage('Security Gates - Quality Gate Check') {
             steps {
-                echo "✅ Checking SonarQube Quality Gate..."
+                echo "🛡️ Checking Security Gates - SonarQube Quality Gate..."
                 script {
-                    timeout(time: 10, unit: 'MINUTES') {
+                    // Increased timeout for quality gate
+                    timeout(time: 15, unit: 'MINUTES') {
                         waitForQualityGate abortPipeline: true
                     }
                 }
@@ -103,16 +103,6 @@ pipeline {
                                 ${image}
                         """
                         
-                        // Generate JSON Report (for processing if needed)
-                        sh """
-                            trivy image \
-                                --exit-code 0 \
-                                --severity HIGH,CRITICAL \
-                                --format json \
-                                --output trivy-reports/${service}-report.json \
-                                ${image}
-                        """
-                        
                         // Console output for logs
                         sh """
                             echo "=== ${service.toUpperCase()} SECURITY SCAN RESULTS ==="
@@ -150,53 +140,6 @@ pipeline {
                         reportFiles: 'index.html',
                         reportName: '🔒 Trivy Security Reports'
                     ])
-                    
-                    // Publish individual reports
-                    publishHTML([
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'trivy-reports',
-                        reportFiles: 'vote-report.html',
-                        reportName: 'Trivy - Vote Service'
-                    ])
-                    publishHTML([
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'trivy-reports',
-                        reportFiles: 'result-report.html',
-                        reportName: 'Trivy - Result Service'
-                    ])
-                    publishHTML([
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'trivy-reports',
-                        reportFiles: 'worker-report.html',
-                        reportName: 'Trivy - Worker Service'
-                    ])
-                }
-                
-                success {
-                    echo "✅ Trivy scan completed successfully"
-                    emailext (
-                        subject: "✅ SECURITY SCAN PASSED: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}",
-                        to: "ansfarazkp@gmail.com",
-                        body: """
-                        Trivy Security Scan completed successfully for build ${env.BUILD_NUMBER}
-                        
-                        Project: ${env.JOB_NAME}
-                        Build URL: ${env.BUILD_URL}
-                        Status: ✅ PASSED
-                        
-                        View detailed reports: ${env.BUILD_URL}trivy-reports/
-                        """
-                    )
-                }
-                
-                failure {
-                    echo "❌ Trivy scan found critical vulnerabilities"
                 }
             }
         }
@@ -235,9 +178,6 @@ pipeline {
                     # Stop and remove existing containers
                     docker-compose down || true
                     
-                    # Clean up old images
-                    docker system prune -f || true
-                    
                     # Deploy fresh stack
                     docker-compose up -d --force-recreate
                     
@@ -256,37 +196,25 @@ pipeline {
 
     post {
         always {
-            // Final cleanup
-            sh '''
-                echo "🧹 Cleaning up workspace..."
-                docker system prune -f || true
-            '''
+            echo "🧹 Cleaning up workspace..."
+            cleanWs()
             
-            // Comprehensive email notification
-            emailext (
-                subject: "${currentBuild.currentResult} - ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}",
+            // Simple email notification without emailext (to avoid connection issues)
+            mail(
                 to: "ansfarazkp@gmail.com",
+                subject: "Build ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                 body: """
                 Pipeline Execution Complete!
                 
                 Project: ${env.JOB_NAME}
                 Build: #${env.BUILD_NUMBER}
                 Status: ${currentBuild.currentResult}
-                Duration: ${currentBuild.durationString}
                 
                 Build URL: ${env.BUILD_URL}
                 
                 Security Reports: ${env.BUILD_URL}trivy-reports/
-                SonarQube Analysis: Check your SonarQube server
-                
-                Deployment:
-                - Vote: http://localhost:5000
-                - Result: http://localhost:5001
                 """
             )
-            
-            // Clean workspace after build
-            cleanWs()
         }
         
         success {
@@ -295,10 +223,6 @@ pipeline {
         
         failure {
             echo "❌ Pipeline failed - check logs for details"
-        }
-        
-        unstable {
-            echo "⚠️ Pipeline unstable - quality gates may have failed"
         }
     }
 }
