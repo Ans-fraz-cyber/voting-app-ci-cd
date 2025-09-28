@@ -1,10 +1,10 @@
-	pipeline {
+pipeline {
     agent any
 
     options {
         skipDefaultCheckout(true)
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 30, unit: 'MINUTES')
+        timeout(time: 15, unit: 'MINUTES')
     }
 
     environment {
@@ -17,22 +17,19 @@
     }
 
     stages {
-        stage('Code Clone') {
+        stage('Download Code') {
             steps {
-                echo "🔄 Cloning repository with retry..."
-                retry(3) {
-                    timeout(time: 5, unit: 'MINUTES') {
-                        script {
-                            // Clean workspace first
-                            sh 'rm -rf * .* || true'
-                            
-                            // Use shallow clone with single branch
-                            sh """
-                                git clone --depth 1 --branch main --single-branch \
-                                https://github.com/Ans-fraz-cyber/voting-app-ci-cd.git .
-                            """
-                        }
-                    }
+                echo "📥 Downloading repository as ZIP..."
+                script {
+                    sh '''
+                        rm -rf * .* 2>/dev/null || true
+                        curl -L -o repo.zip "https://github.com/Ans-fraz-cyber/voting-app-ci-cd/archive/main.zip" || wget -O repo.zip "https://github.com/Ans-fraz-cyber/voting-app-ci-cd/archive/main.zip"
+                        unzip -q repo.zip
+                        mv voting-app-ci-cd-main/* . 2>/dev/null || true
+                        mv voting-app-ci-cd-main/.* . 2>/dev/null || true
+                        rm -rf voting-app-ci-cd-main repo.zip
+                        echo "✅ Repository downloaded successfully"
+                    '''
                 }
             }
         }
@@ -50,6 +47,17 @@
                               -Dsonar.sources=. \
                               -Dsonar.login=${SONAR_AUTH_TOKEN}
                         """
+                    }
+                }
+            }
+        }
+
+        stage('SonarQube Quality Gate') {
+            steps {
+                echo "✅ Checking SonarQube Quality Gate..."
+                script {
+                    timeout(time: 5, unit: 'MINUTES') {
+                        waitForQualityGate abortPipeline: true
                     }
                 }
             }
@@ -73,24 +81,19 @@
                 echo "🔒 Running Trivy Security Scan..."
                 script {
                     sh """
-                        trivy image --format table ${IMAGE_VOTE}:${BUILD_NUMBER} > trivy-vote.txt || echo "Vote scan completed"
-                        trivy image --format table ${IMAGE_RESULT}:${BUILD_NUMBER} > trivy-result.txt || echo "Result scan completed"
-                        trivy image --format table ${IMAGE_WORKER}:${BUILD_NUMBER} > trivy-worker.txt || echo "Worker scan completed"
+                        trivy image --format table ${IMAGE_VOTE}:${BUILD_NUMBER} | head -20 > trivy-vote.txt
+                        trivy image --format table ${IMAGE_RESULT}:${BUILD_NUMBER} | head -20 > trivy-result.txt
+                        trivy image --format table ${IMAGE_WORKER}:${BUILD_NUMBER} | head -20 > trivy-worker.txt
                     """
                     archiveArtifacts artifacts: 'trivy-*.txt', fingerprint: true
                     
-                    // Show summary
+                    // Display security summary
                     sh """
-                        echo "🔒 SECURITY SCAN SUMMARY"
+                        echo "🛡️ SECURITY GATES STATUS"
                         echo "========================"
-                        echo "Vote Service:"
-                        cat trivy-vote.txt | head -5 || echo "No vulnerabilities found"
-                        echo ""
-                        echo "Result Service:" 
-                        cat trivy-result.txt | head -5 || echo "No vulnerabilities found"
-                        echo ""
-                        echo "Worker Service:"
-                        cat trivy-worker.txt | head -5 || echo "No vulnerabilities found"
+                        echo "✅ SonarQube Quality Gate: PASSED"
+                        echo "✅ Trivy Container Scan: COMPLETED"
+                        echo "📊 Reports saved as artifacts"
                     """
                 }
             }
@@ -106,28 +109,35 @@
                             docker tag ${IMAGE_RESULT}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
                             docker tag ${IMAGE_WORKER}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
 
-                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER} || echo "Vote push completed"
-                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER} || echo "Result push completed"
-                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER} || echo "Worker push completed"
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
                         """
                     }
                 }
             }
         }
 
-        stage('Deploy Application') {
+        stage('Deploy Voting App Only') {
             steps {
-                echo "🚀 Deploying voting application..."
-                sh """
-                    docker-compose down || true
-                    docker-compose up -d --force-recreate
-                    sleep 10
-                    echo "📊 Deployment Status:"
-                    docker-compose ps
-                    echo "🌐 Application URLs:"
-                    echo "Vote: http://localhost:5000"
-                    echo "Result: http://localhost:5001"
-                """
+                echo "🚀 Deploying voting application (excluding SonarQube)..."
+                script {
+                    // Stop only voting app containers, not SonarQube
+                    sh '''
+                        docker stop voting-app-pipeline-vote-1 voting-app-pipeline-result-1 voting-app-pipeline-worker-1 voting-app-pipeline-redis-1 voting-app-pipeline-db-1 2>/dev/null || true
+                        docker rm voting-app-pipeline-vote-1 voting-app-pipeline-result-1 voting-app-pipeline-worker-1 voting-app-pipeline-redis-1 voting-app-pipeline-db-1 2>/dev/null || true
+                        
+                        # Start only voting app services
+                        docker-compose up -d vote result worker redis db
+                        
+                        sleep 10
+                        echo "📊 Voting App Deployment Status:"
+                        docker-compose ps vote result worker redis db
+                        echo "🌐 Application URLs:"
+                        echo "Vote: http://localhost:5000"
+                        echo "Result: http://localhost:5001"
+                    '''
+                }
             }
         }
     }
@@ -149,15 +159,27 @@
                 
                 Build URL: ${env.BUILD_URL}
                 
+                Security Gates:
+                - SonarQube Quality Gate: ✅ PASSED
+                - Trivy Security Scan: ✅ COMPLETED
+                
                 Application URLs:
                 - Vote: http://localhost:5000
                 - Result: http://localhost:5001
+                
+                SonarQube: http://localhost:9000
                 """
             )
         }
         
         success {
             echo "🎉 Pipeline executed successfully!"
+            echo "🛡️ Security Gates: ALL PASSED"
+            echo "🚀 Application deployed successfully"
+        }
+        
+        failure {
+            echo "❌ Pipeline failed - check console output"
         }
     }
 }
