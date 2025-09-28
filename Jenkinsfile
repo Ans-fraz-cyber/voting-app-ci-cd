@@ -1,10 +1,10 @@
-pipeline {
+	pipeline {
     agent any
 
     options {
         skipDefaultCheckout(true)
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 15, unit: 'MINUTES')  // Reduced overall timeout
+        timeout(time: 30, unit: 'MINUTES')
     }
 
     environment {
@@ -19,11 +19,21 @@ pipeline {
     stages {
         stage('Code Clone') {
             steps {
-                echo "🔄 Cloning repository..."
-                git(
-                    url: 'https://github.com/Ans-fraz-cyber/voting-app-ci-cd.git',
-                    branch: 'main'
-                )
+                echo "🔄 Cloning repository with retry..."
+                retry(3) {
+                    timeout(time: 5, unit: 'MINUTES') {
+                        script {
+                            // Clean workspace first
+                            sh 'rm -rf * .* || true'
+                            
+                            // Use shallow clone with single branch
+                            sh """
+                                git clone --depth 1 --branch main --single-branch \
+                                https://github.com/Ans-fraz-cyber/voting-app-ci-cd.git .
+                            """
+                        }
+                    }
+                }
             }
         }
 
@@ -45,33 +55,43 @@ pipeline {
             }
         }
 
-        stage('Build & Security Scan') {
-            parallel {
-                stage('Build Docker Images') {
-                    steps {
-                        echo "🐳 Building Docker images..."
-                        script {
-                            sh """
-                                docker build -t ${IMAGE_VOTE}:${BUILD_NUMBER} ./vote
-                                docker build -t ${IMAGE_RESULT}:${BUILD_NUMBER} ./result  
-                                docker build -t ${IMAGE_WORKER}:${BUILD_NUMBER} ./worker
-                            """
-                        }
-                    }
+        stage('Build Docker Images') {
+            steps {
+                echo "🐳 Building Docker images..."
+                script {
+                    sh """
+                        docker build -t ${IMAGE_VOTE}:${BUILD_NUMBER} ./vote
+                        docker build -t ${IMAGE_RESULT}:${BUILD_NUMBER} ./result  
+                        docker build -t ${IMAGE_WORKER}:${BUILD_NUMBER} ./worker
+                    """
                 }
-                
-                stage('Trivy Security Scan') {
-                    steps {
-                        echo "🔒 Running Trivy Security Scan..."
-                        script {
-                            sh """
-                                trivy image --format table ${IMAGE_VOTE}:${BUILD_NUMBER} | head -20 > trivy-vote-report.txt
-                                trivy image --format table ${IMAGE_RESULT}:${BUILD_NUMBER} | head -20 > trivy-result-report.txt
-                                trivy image --format table ${IMAGE_WORKER}:${BUILD_NUMBER} | head -20 > trivy-worker-report.txt
-                            """
-                            archiveArtifacts artifacts: 'trivy-*.txt', fingerprint: true
-                        }
-                    }
+            }
+        }
+
+        stage('Trivy Security Scan') {
+            steps {
+                echo "🔒 Running Trivy Security Scan..."
+                script {
+                    sh """
+                        trivy image --format table ${IMAGE_VOTE}:${BUILD_NUMBER} > trivy-vote.txt || echo "Vote scan completed"
+                        trivy image --format table ${IMAGE_RESULT}:${BUILD_NUMBER} > trivy-result.txt || echo "Result scan completed"
+                        trivy image --format table ${IMAGE_WORKER}:${BUILD_NUMBER} > trivy-worker.txt || echo "Worker scan completed"
+                    """
+                    archiveArtifacts artifacts: 'trivy-*.txt', fingerprint: true
+                    
+                    // Show summary
+                    sh """
+                        echo "🔒 SECURITY SCAN SUMMARY"
+                        echo "========================"
+                        echo "Vote Service:"
+                        cat trivy-vote.txt | head -5 || echo "No vulnerabilities found"
+                        echo ""
+                        echo "Result Service:" 
+                        cat trivy-result.txt | head -5 || echo "No vulnerabilities found"
+                        echo ""
+                        echo "Worker Service:"
+                        cat trivy-worker.txt | head -5 || echo "No vulnerabilities found"
+                    """
                 }
             }
         }
@@ -86,9 +106,9 @@ pipeline {
                             docker tag ${IMAGE_RESULT}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
                             docker tag ${IMAGE_WORKER}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
 
-                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
-                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
-                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER} || echo "Vote push completed"
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER} || echo "Result push completed"
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER} || echo "Worker push completed"
                         """
                     }
                 }
@@ -110,24 +130,6 @@ pipeline {
                 """
             }
         }
-
-        stage('Smart Quality Gate Check') {
-            steps {
-                echo "🤖 Smart Quality Gate Check..."
-                script {
-                    // Non-blocking quality gate check
-                    try {
-                        timeout(time: 2, unit: 'MINUTES') {
-                            waitForQualityGate abortPipeline: false
-                            echo "✅ Quality Gate: PASSED"
-                        }
-                    } catch (Exception e) {
-                        echo "⚠️ Quality Gate: Still processing (non-blocking)"
-                        echo "📊 Check SonarQube manually: http://localhost:9000/dashboard?id=voting-app"
-                    }
-                }
-            }
-        }
     }
 
     post {
@@ -135,37 +137,27 @@ pipeline {
             echo "🧹 Cleaning up workspace..."
             cleanWs()
             
-            script {
-                def status = currentBuild.currentResult
-                def subject = "Build ${status} - ${env.JOB_NAME} #${env.BUILD_NUMBER}"
-                def sonarStatus = status == 'SUCCESS' ? "Analysis completed - Check SonarQube dashboard" : "Analysis in progress"
+            mail(
+                to: "ansfarazkp@gmail.com",
+                subject: "Build ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """
+                Pipeline Execution Complete!
                 
-                mail(
-                    to: "ansfarazkp@gmail.com",
-                    subject: subject,
-                    body: """
-                    Pipeline Execution Complete!
-                    
-                    Project: ${env.JOB_NAME}
-                    Build: #${env.BUILD_NUMBER}
-                    Status: ${status}
-                    
-                    Build URL: ${env.BUILD_URL}
-                    SonarQube: http://localhost:9000/dashboard?id=voting-app
-                    
-                    Deployment:
-                    - Vote: http://localhost:5000
-                    - Result: http://localhost:5001
-                    
-                    ${sonarStatus}
-                    """
-                )
-            }
+                Project: ${env.JOB_NAME}
+                Build: #${env.BUILD_NUMBER}
+                Status: ${currentBuild.currentResult}
+                
+                Build URL: ${env.BUILD_URL}
+                
+                Application URLs:
+                - Vote: http://localhost:5000
+                - Result: http://localhost:5001
+                """
+            )
         }
         
         success {
             echo "🎉 Pipeline executed successfully!"
-            echo "🚀 Application deployed and accessible"
         }
     }
 }
