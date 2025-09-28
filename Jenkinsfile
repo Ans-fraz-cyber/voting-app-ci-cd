@@ -36,6 +36,18 @@ pipeline {
             }
         }
 
+        // 🚀 ADDED: SonarQube Quality Gate (FIXED VERSION)
+        stage("SonarQube Quality Gate") {
+            steps {
+                echo "✅ Checking SonarQube Quality Gate..."
+                script {
+                    timeout(time: 5, unit: 'MINUTES') {
+                        waitForQualityGate abortPipeline: true
+                    }
+                }
+            }
+        }
+
         stage('Build Docker Images') {
             steps {
                 echo "🐳 Building Docker images for vote, result, and worker..."
@@ -51,10 +63,58 @@ pipeline {
             steps {
                 echo "🔎 Running Trivy vulnerability scan on all services..."
                 sh '''
-                    trivy image --exit-code 0 --severity HIGH,CRITICAL voting-app-vote:latest
-                    trivy image --exit-code 0 --severity HIGH,CRITICAL voting-app-result:latest
-                    trivy image --exit-code 0 --severity HIGH,CRITICAL voting-app-worker:latest
+                    # Create reports directory
+                    mkdir -p trivy-reports
+                    
+                    # Scan with HTML and JSON reports
+                    trivy image --exit-code 0 --severity HIGH,CRITICAL \
+                             --format template --template "@/usr/local/share/trivy/templates/html.tpl" \
+                             -o trivy-reports/vote-report.html voting-app-vote:latest
+                    
+                    trivy image --exit-code 0 --severity HIGH,CRITICAL \
+                             --format template --template "@/usr/local/share/trivy/templates/html.tpl" \
+                             -o trivy-reports/result-report.html voting-app-result:latest
+                    
+                    trivy image --exit-code 0 --severity HIGH,CRITICAL \
+                             --format template --template "@/usr/local/share/trivy/templates/html.tpl" \
+                             -o trivy-reports/worker-report.html voting-app-worker:latest
+                    
+                    # Also generate JSON reports for potential processing
+                    trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o trivy-reports/vote-report.json voting-app-vote:latest
+                    trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o trivy-reports/result-report.json voting-app-result:latest
+                    trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o trivy-reports/worker-report.json voting-app-worker:latest
                 '''
+            }
+            post {
+                always {
+                    // Archive HTML reports for easy access in Jenkins
+                    archiveArtifacts artifacts: 'trivy-reports/*.html', fingerprint: true
+                    // Publish HTML reports
+                    publishHTML([
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'trivy-reports',
+                        reportFiles: 'vote-report.html',
+                        reportName: 'Trivy Vote Report'
+                    ])
+                    publishHTML([
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'trivy-reports',
+                        reportFiles: 'result-report.html',
+                        reportName: 'Trivy Result Report'
+                    ])
+                    publishHTML([
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'trivy-reports',
+                        reportFiles: 'worker-report.html',
+                        reportName: 'Trivy Worker Report'
+                    ])
+                }
             }
         }
 
@@ -88,7 +148,6 @@ pipeline {
             }
         }
 
-        // 🚀 NEW DEPLOYMENT STAGE - FIXED VERSION
         stage('Deploy Application') {
             steps {
                 echo "🚀 Deploying voting application..."
