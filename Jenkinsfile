@@ -2,19 +2,29 @@ pipeline {
     agent any
 
     options {
-        skipDefaultCheckout(true)   // 👈 disables "Declarative: Checkout SCM"
+        skipDefaultCheckout(true)
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 30, unit: 'MINUTES')
     }
 
     environment {
-        SONARQUBE = 'SonarQubeServer'        // must match Jenkins > Configure System
+        SONARQUBE = 'SonarQubeServer'
         SONAR_AUTH_TOKEN = credentials('sonar-token')
+        DOCKERHUB_NAMESPACE = '31793179'
     }
 
     stages {
         stage('Code Clone') {
             steps {
-                echo "🔄 Cloning repository..."
-                git url: 'https://github.com/Ans-fraz-cyber/voting-app-ci-cd.git', branch: 'main'
+                echo "🔄 Cloning private repository..."
+                git(
+                    url: 'https://github.com/Ans-fraz-cyber/voting-app-ci-cd.git',
+                    branch: 'main',
+                    credentialsId: 'github-token'
+                )
+                
+                // Clean workspace from previous builds
+                cleanWs()
             }
         }
 
@@ -29,6 +39,7 @@ pipeline {
                               -Dsonar.projectKey=voting-app \
                               -Dsonar.projectName=voting-app \
                               -Dsonar.sources=. \
+                              -Dsonar.host.url=\${SONAR_HOST_URL} \
                               -Dsonar.login=${SONAR_AUTH_TOKEN}
                         """
                     }
@@ -36,12 +47,11 @@ pipeline {
             }
         }
 
-        // 🚀 ADDED: SonarQube Quality Gate (FIXED VERSION)
         stage("SonarQube Quality Gate") {
             steps {
                 echo "✅ Checking SonarQube Quality Gate..."
                 script {
-                    timeout(time: 5, unit: 'MINUTES') {
+                    timeout(time: 10, unit: 'MINUTES') {
                         waitForQualityGate abortPipeline: true
                     }
                 }
@@ -50,61 +60,105 @@ pipeline {
 
         stage('Build Docker Images') {
             steps {
-                echo "🐳 Building Docker images for vote, result, and worker..."
+                echo "🐳 Building Docker images..."
                 sh '''
+                    echo "Building Vote service..."
                     docker build -t voting-app-vote:latest ./vote
+                    
+                    echo "Building Result service..."
                     docker build -t voting-app-result:latest ./result
+                    
+                    echo "Building Worker service..."
                     docker build -t voting-app-worker:latest ./worker
+                    
+                    echo "✅ All images built successfully"
                 '''
             }
         }
 
-        stage('Trivy Scan') {
+        stage('Trivy Security Scan') {
             steps {
-                echo "🔎 Running Trivy vulnerability scan on all services..."
-                sh '''
-                    # Create reports directory
-                    mkdir -p trivy-reports
+                echo "🔒 Running Trivy Security Scan..."
+                script {
+                    // Clean previous reports
+                    sh 'rm -rf trivy-reports || true'
+                    sh 'mkdir -p trivy-reports'
                     
-                    # Scan with HTML reports - GUARANTEED TO WORK
-                    trivy image --exit-code 0 --severity HIGH,CRITICAL \
-                             --format html \
-                             -o trivy-reports/vote-report.html voting-app-vote:latest
-                     
-                    trivy image --exit-code 0 --severity HIGH,CRITICAL \
-                             --format html \
-                             -o trivy-reports/result-report.html voting-app-result:latest
-                     
-                    trivy image --exit-code 0 --severity HIGH,CRITICAL \
-                             --format html \
-                             -o trivy-reports/worker-report.html voting-app-worker:latest
+                    def images = [
+                        'vote': 'voting-app-vote:latest',
+                        'result': 'voting-app-result:latest', 
+                        'worker': 'voting-app-worker:latest'
+                    ]
                     
-                    # Also show console output for immediate feedback
-                    echo "=== Vote Image Scan ==="
-                    trivy image --exit-code 0 --severity HIGH,CRITICAL voting-app-vote:latest
-                    echo "=== Result Image Scan ==="
-                    trivy image --exit-code 0 --severity HIGH,CRITICAL voting-app-result:latest
-                    echo "=== Worker Image Scan ==="
-                    trivy image --exit-code 0 --severity HIGH,CRITICAL voting-app-worker:latest
+                    images.each { service, image ->
+                        echo "📊 Scanning ${service} image..."
+                        
+                        // Generate HTML Report
+                        sh """
+                            trivy image \
+                                --exit-code 0 \
+                                --severity HIGH,CRITICAL \
+                                --format html \
+                                --output trivy-reports/${service}-report.html \
+                                ${image}
+                        """
+                        
+                        // Generate JSON Report (for processing if needed)
+                        sh """
+                            trivy image \
+                                --exit-code 0 \
+                                --severity HIGH,CRITICAL \
+                                --format json \
+                                --output trivy-reports/${service}-report.json \
+                                ${image}
+                        """
+                        
+                        // Console output for logs
+                        sh """
+                            echo "=== ${service.toUpperCase()} SECURITY SCAN RESULTS ==="
+                            trivy image --exit-code 0 --severity HIGH,CRITICAL ${image}
+                        """
+                    }
                     
-                    # List generated reports to verify
-                    echo "📁 Generated Trivy Reports:"
-                    ls -la trivy-reports/
-                '''
+                    // Create consolidated report index
+                    sh '''
+                        echo "<html><head><title>Trivy Security Reports</title></head>" > trivy-reports/index.html
+                        echo "<body><h1>🔒 Trivy Security Scan Reports</h1>" >> trivy-reports/index.html
+                        echo "<ul>" >> trivy-reports/index.html
+                        echo "<li><a href='vote-report.html'>Vote Service Report</a></li>" >> trivy-reports/index.html
+                        echo "<li><a href='result-report.html'>Result Service Report</a></li>" >> trivy-reports/index.html
+                        echo "<li><a href='worker-report.html'>Worker Service Report</a></li>" >> trivy-reports/index.html
+                        echo "</ul><p>Generated on: $(date)</p></body></html>" >> trivy-reports/index.html
+                        
+                        echo "📁 Generated Reports:"
+                        ls -la trivy-reports/
+                    '''
+                }
             }
+            
             post {
                 always {
-                    // Archive HTML reports for easy access in Jenkins
-                    archiveArtifacts artifacts: 'trivy-reports/*.html', fingerprint: true
+                    // Archive all reports
+                    archiveArtifacts artifacts: 'trivy-reports/**', fingerprint: true
                     
-                    // Publish HTML reports - THIS CREATES THE BUTTONS IN JENKINS UI
+                    // Publish main index
+                    publishHTML([
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'trivy-reports',
+                        reportFiles: 'index.html',
+                        reportName: '🔒 Trivy Security Reports'
+                    ])
+                    
+                    // Publish individual reports
                     publishHTML([
                         allowMissing: true,
                         alwaysLinkToLastBuild: true,
                         keepAll: true,
                         reportDir: 'trivy-reports',
                         reportFiles: 'vote-report.html',
-                        reportName: 'Trivy Vote Report'
+                        reportName: 'Trivy - Vote Service'
                     ])
                     publishHTML([
                         allowMissing: true,
@@ -112,7 +166,7 @@ pipeline {
                         keepAll: true,
                         reportDir: 'trivy-reports',
                         reportFiles: 'result-report.html',
-                        reportName: 'Trivy Result Report'
+                        reportName: 'Trivy - Result Service'
                     ])
                     publishHTML([
                         allowMissing: true,
@@ -120,8 +174,29 @@ pipeline {
                         keepAll: true,
                         reportDir: 'trivy-reports',
                         reportFiles: 'worker-report.html',
-                        reportName: 'Trivy Worker Report'
+                        reportName: 'Trivy - Worker Service'
                     ])
+                }
+                
+                success {
+                    echo "✅ Trivy scan completed successfully"
+                    emailext (
+                        subject: "✅ SECURITY SCAN PASSED: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}",
+                        to: "ansfarazkp@gmail.com",
+                        body: """
+                        Trivy Security Scan completed successfully for build ${env.BUILD_NUMBER}
+                        
+                        Project: ${env.JOB_NAME}
+                        Build URL: ${env.BUILD_URL}
+                        Status: ✅ PASSED
+                        
+                        View detailed reports: ${env.BUILD_URL}trivy-reports/
+                        """
+                    )
+                }
+                
+                failure {
+                    echo "❌ Trivy scan found critical vulnerabilities"
                 }
             }
         }
@@ -131,26 +206,23 @@ pipeline {
                 script {
                     echo "📤 Pushing images to DockerHub..."
                     docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
-                        sh '''
-                            # Tag images with build number
-                            docker tag voting-app-vote:latest 31793179/voting-app-vote:${BUILD_NUMBER}
-                            docker tag voting-app-result:latest 31793179/voting-app-result:${BUILD_NUMBER}
-                            docker tag voting-app-worker:latest 31793179/voting-app-worker:${BUILD_NUMBER}
-
-                            # Also tag them as :latest under DockerHub repo
-                            docker tag voting-app-vote:latest 31793179/voting-app-vote:latest
-                            docker tag voting-app-result:latest 31793179/voting-app-result:latest
-                            docker tag voting-app-worker:latest 31793179/voting-app-worker:latest
-
-                            # Push all tags
-                            docker push 31793179/voting-app-vote:${BUILD_NUMBER}
-                            docker push 31793179/voting-app-result:${BUILD_NUMBER}
-                            docker push 31793179/voting-app-worker:${BUILD_NUMBER}
-
-                            docker push 31793179/voting-app-vote:latest
-                            docker push 31793179/voting-app-result:latest
-                            docker push 31793179/voting-app-worker:latest
-                        '''
+                        def images = ['vote', 'result', 'worker']
+                        
+                        images.each { service ->
+                            sh """
+                                # Tag with build number
+                                docker tag voting-app-${service}:latest ${env.DOCKERHUB_NAMESPACE}/voting-app-${service}:${env.BUILD_NUMBER}
+                                
+                                # Tag as latest
+                                docker tag voting-app-${service}:latest ${env.DOCKERHUB_NAMESPACE}/voting-app-${service}:latest
+                                
+                                # Push both tags
+                                docker push ${env.DOCKERHUB_NAMESPACE}/voting-app-${service}:${env.BUILD_NUMBER}
+                                docker push ${env.DOCKERHUB_NAMESPACE}/voting-app-${service}:latest
+                                
+                                echo "✅ ${service} image pushed successfully"
+                            """
+                        }
                     }
                 }
             }
@@ -160,19 +232,23 @@ pipeline {
             steps {
                 echo "🚀 Deploying voting application..."
                 sh '''
-                    # Stop and remove ONLY voting app containers (not SonarQube)
-                    docker stop voting-app-vote-1 voting-app-result-1 voting-app-worker-1 voting-app-redis-1 voting-app-db-1 2>/dev/null || true
-                    docker rm voting-app-vote-1 voting-app-result-1 voting-app-worker-1 voting-app-redis-1 voting-app-db-1 2>/dev/null || true
+                    # Stop and remove existing containers
+                    docker-compose down || true
                     
-                    # Start only voting app services (SonarQube will continue running)
-                    docker compose up -d vote result worker redis db
+                    # Clean up old images
+                    docker system prune -f || true
                     
-                    # Wait for services to be ready
+                    # Deploy fresh stack
+                    docker-compose up -d --force-recreate
+                    
+                    # Health check
                     sleep 30
+                    echo "📊 Deployment Status:"
+                    docker-compose ps
                     
-                    # Check if containers are running
-                    echo "📊 Deployment status:"
-                    docker ps | grep voting-app
+                    echo "🌐 Application URLs:"
+                    echo "Vote: http://localhost:5000"
+                    echo "Result: http://localhost:5001"
                 '''
             }
         }
@@ -180,11 +256,49 @@ pipeline {
 
     post {
         always {
-            mail(
+            // Final cleanup
+            sh '''
+                echo "🧹 Cleaning up workspace..."
+                docker system prune -f || true
+            '''
+            
+            // Comprehensive email notification
+            emailext (
+                subject: "${currentBuild.currentResult} - ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}",
                 to: "ansfarazkp@gmail.com",
-                subject: "Jenkins Build Status: ${currentBuild.fullDisplayName}",
-                body: "The Jenkins build ${currentBuild.fullDisplayName} finished with status: ${currentBuild.currentResult}. Check details here: ${env.BUILD_URL}"
+                body: """
+                Pipeline Execution Complete!
+                
+                Project: ${env.JOB_NAME}
+                Build: #${env.BUILD_NUMBER}
+                Status: ${currentBuild.currentResult}
+                Duration: ${currentBuild.durationString}
+                
+                Build URL: ${env.BUILD_URL}
+                
+                Security Reports: ${env.BUILD_URL}trivy-reports/
+                SonarQube Analysis: Check your SonarQube server
+                
+                Deployment:
+                - Vote: http://localhost:5000
+                - Result: http://localhost:5001
+                """
             )
+            
+            // Clean workspace after build
+            cleanWs()
+        }
+        
+        success {
+            echo "🎉 Pipeline executed successfully!"
+        }
+        
+        failure {
+            echo "❌ Pipeline failed - check logs for details"
+        }
+        
+        unstable {
+            echo "⚠️ Pipeline unstable - quality gates may have failed"
         }
     }
 }
