@@ -14,7 +14,10 @@ pipeline {
         IMAGE_RESULT = "voting-app-result" 
         IMAGE_WORKER = "voting-app-worker"
         DOCKERHUB_NAMESPACE = "31793179"
+        // Enable BuildKit for faster, more efficient builds
         DOCKER_BUILDKIT = "1"
+        COMPOSE_DOCKER_CLI_BUILD = "1"
+        BUILDKIT_PROGRESS = "plain"
     }
 
     stages {
@@ -30,6 +33,7 @@ pipeline {
                         mv voting-app-ci-cd-main/.* . 2>/dev/null || true
                         rm -rf voting-app-ci-cd-main repo.zip
                         echo "✅ Repository downloaded successfully"
+                        echo "🏷️ Build Number (Image Tag): ${BUILD_NUMBER}"
                     '''
                 }
             }
@@ -71,14 +75,42 @@ pipeline {
             }
         }
 
-        stage('Build Docker Images') {
+        stage('Build Docker Images with BuildKit') {
             steps {
-                echo "🐳 Building Docker images..."
+                echo "🐳 Building Docker images with BuildKit..."
+                echo "🏷️ Using Build Number as Image Tag: ${BUILD_NUMBER}"
                 script {
                     sh """
-                        docker build -t ${IMAGE_VOTE}:${BUILD_NUMBER} ./vote
-                        docker build -t ${IMAGE_RESULT}:${BUILD_NUMBER} ./result  
-                        docker build -t ${IMAGE_WORKER}:${BUILD_NUMBER} ./worker
+                        # Enable BuildKit for faster builds with better caching
+                        export DOCKER_BUILDKIT=1
+                        export BUILDKIT_PROGRESS=plain
+                        
+                        echo "🔧 Building Vote image with BuildKit..."
+                        docker build --progress=plain \
+                            --build-arg BUILDKIT_INLINE_CACHE=1 \
+                            -t ${IMAGE_VOTE}:${BUILD_NUMBER} \
+                            -t ${IMAGE_VOTE}:latest \
+                            ./vote
+                        
+                        echo "🔧 Building Result image with BuildKit..."
+                        docker build --progress=plain \
+                            --build-arg BUILDKIT_INLINE_CACHE=1 \
+                            -t ${IMAGE_RESULT}:${BUILD_NUMBER} \
+                            -t ${IMAGE_RESULT}:latest \
+                            ./result
+                        
+                        echo "🔧 Building Worker image with BuildKit..."
+                        docker build --progress=plain \
+                            --build-arg BUILDKIT_INLINE_CACHE=1 \
+                            -t ${IMAGE_WORKER}:${BUILD_NUMBER} \
+                            -t ${IMAGE_WORKER}:latest \
+                            ./worker
+                        
+                        echo "✅ All images built successfully with BuildKit"
+                        echo "📦 Image Tags:"
+                        echo "   - ${IMAGE_VOTE}:${BUILD_NUMBER}"
+                        echo "   - ${IMAGE_RESULT}:${BUILD_NUMBER}"
+                        echo "   - ${IMAGE_WORKER}:${BUILD_NUMBER}"
                     """
                 }
             }
@@ -230,6 +262,7 @@ pipeline {
                                         <div class="header">
                                             <h1>🛡️ Security Scan Dashboard</h1>
                                             <p>Build #${BUILD_NUMBER} - Voting App CI/CD Pipeline</p>
+                                            <p>🔧 Built with Docker BuildKit</p>
                                             <p>Generated on: \$(date)</p>
                                         </div>
                                         
@@ -241,7 +274,7 @@ pipeline {
                                                 </div>
                                                 <div class="status-card success">
                                                     <div class="card-title">🐳 Docker Images Built</div>
-                                                    <div class="card-value">All containers built successfully</div>
+                                                    <div class="card-value">Built with BuildKit - Tag: ${BUILD_NUMBER}</div>
                                                 </div>
                                                 <div class="status-card success">
                                                     <div class="card-title">🔒 Security Scans Completed</div>
@@ -266,15 +299,15 @@ pipeline {
                                                 <div class="report-links">
                                                     <a href="trivy-vote.html" class="report-link" target="_blank">
                                                         <h3>🗳️ Vote Service</h3>
-                                                        <p>Click to view vulnerability report</p>
+                                                        <p>Image: ${IMAGE_VOTE}:${BUILD_NUMBER}</p>
                                                     </a>
                                                     <a href="trivy-result.html" class="report-link" target="_blank">
                                                         <h3>📈 Result Service</h3>
-                                                        <p>Click to view vulnerability report</p>
+                                                        <p>Image: ${IMAGE_RESULT}:${BUILD_NUMBER}</p>
                                                     </a>
                                                     <a href="trivy-worker.html" class="report-link" target="_blank">
                                                         <h3>⚙️ Worker Service</h3>
-                                                        <p>Click to view vulnerability report</p>
+                                                        <p>Image: ${IMAGE_WORKER}:${BUILD_NUMBER}</p>
                                                     </a>
                                                 </div>
                                             </div>
@@ -299,6 +332,7 @@ pipeline {
                                         </div>
                                         
                                         <div class="footer">
+                                            <p>🔧 Built with Docker BuildKit | 🏷️ Image Tag: ${BUILD_NUMBER}</p>
                                             <p>🔍 For detailed vulnerability analysis and remediation steps, click on the HTML reports above</p>
                                             <p>🕒 Report generated by Jenkins CI/CD Pipeline</p>
                                         </div>
@@ -327,6 +361,12 @@ pipeline {
                                     docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
                                     docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
                                     docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
+                                    
+                                    echo "✅ Images pushed to DockerHub with tag: ${BUILD_NUMBER}"
+                                    echo "📦 Pushed images:"
+                                    echo "   - ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}"
+                                    echo "   - ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}"
+                                    echo "   - ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}"
                                 """
                             }
                         }
@@ -415,7 +455,7 @@ pipeline {
 
     post {
         always {
-            // Archive artifacts (removed publishHTML since plugin is not available)
+            // Archive artifacts
             archiveArtifacts artifacts: 'trivy-*.html,trivy-*.txt,trivy-*.json,security-dashboard.html', fingerprint: true
             
             cleanWs()
@@ -427,8 +467,11 @@ pipeline {
                 Build ${currentBuild.currentResult}!
                 
                 Project: ${env.JOB_NAME}
-                Build: #${env.BUILD_NUMBER}
+                Build Number (Image Tag): #${env.BUILD_NUMBER}
                 URL: ${env.BUILD_URL}
+                
+                🔧 Built with Docker BuildKit
+                📦 Images tagged with: ${env.BUILD_NUMBER}
                 
                 Security reports are available in the build artifacts.
                 ${currentBuild.currentResult == 'SUCCESS' ? 'Application deployed successfully!' : 'Build completed with warnings.'}
@@ -442,6 +485,8 @@ pipeline {
         
         success {
             echo "🎉 Pipeline executed successfully!"
+            echo "🔧 Built with Docker BuildKit"
+            echo "🏷️ All images tagged with: ${BUILD_NUMBER}"
             echo "🌐 Application deployed at:"
             echo "   Vote: http://localhost:5000"
             echo "   Result: http://localhost:5001"
