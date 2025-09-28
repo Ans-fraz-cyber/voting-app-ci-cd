@@ -91,23 +91,10 @@ pipeline {
                         echo "🔒 Running Trivy Security Scan..."
                         script {
                             sh """
-                                # Install Trivy HTML template if not available
-                                mkdir -p /tmp/trivy-templates
-                                curl -sL -o /tmp/trivy-templates/html.tpl \\
-                                    https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl || echo "Template download failed, using built-in format"
-                                
-                                # Generate HTML reports with proper vulnerability links
-                                trivy image --format template --template "@/tmp/trivy-templates/html.tpl" -o trivy-vote.html ${IMAGE_VOTE}:${BUILD_NUMBER} || \\
-                                trivy image --format html -o trivy-vote.html ${IMAGE_VOTE}:${BUILD_NUMBER} || \\
-                                trivy image --format sarif -o trivy-vote.sarif ${IMAGE_VOTE}:${BUILD_NUMBER}
-                                
-                                trivy image --format template --template "@/tmp/trivy-templates/html.tpl" -o trivy-result.html ${IMAGE_RESULT}:${BUILD_NUMBER} || \\
-                                trivy image --format html -o trivy-result.html ${IMAGE_RESULT}:${BUILD_NUMBER} || \\
-                                trivy image --format sarif -o trivy-result.sarif ${IMAGE_RESULT}:${BUILD_NUMBER}
-                                
-                                trivy image --format template --template "@/tmp/trivy-templates/html.tpl" -o trivy-worker.html ${IMAGE_WORKER}:${BUILD_NUMBER} || \\
-                                trivy image --format html -o trivy-worker.html ${IMAGE_WORKER}:${BUILD_NUMBER} || \\
-                                trivy image --format sarif -o trivy-worker.sarif ${IMAGE_WORKER}:${BUILD_NUMBER}
+                                # Generate HTML reports with fallback to simple format
+                                trivy image --format html -o trivy-vote.html ${IMAGE_VOTE}:${BUILD_NUMBER} || echo "HTML generation failed for vote"
+                                trivy image --format html -o trivy-result.html ${IMAGE_RESULT}:${BUILD_NUMBER} || echo "HTML generation failed for result"
+                                trivy image --format html -o trivy-worker.html ${IMAGE_WORKER}:${BUILD_NUMBER} || echo "HTML generation failed for worker"
                                 
                                 # Always generate table format as backup
                                 trivy image --format table ${IMAGE_VOTE}:${BUILD_NUMBER} > trivy-vote.txt
@@ -120,7 +107,7 @@ pipeline {
                                 trivy image --format json ${IMAGE_WORKER}:${BUILD_NUMBER} > trivy-worker.json
                             """
                             
-                            // Create enhanced security dashboard with vulnerability links
+                            // Create enhanced security dashboard
                             sh """
                                 cat > security-dashboard.html << EOF
                                 <!DOCTYPE html>
@@ -232,10 +219,6 @@ pipeline {
                                             color: white; 
                                             margin-top: 30px; 
                                         }
-                                        .timestamp { 
-                                            font-style: italic; 
-                                            opacity: 0.8; 
-                                        }
                                         .severity-critical { color: #e74c3c; font-weight: bold; }
                                         .severity-high { color: #e67e22; font-weight: bold; }
                                         .severity-medium { color: #f39c12; font-weight: bold; }
@@ -247,7 +230,7 @@ pipeline {
                                         <div class="header">
                                             <h1>🛡️ Security Scan Dashboard</h1>
                                             <p>Build #${BUILD_NUMBER} - Voting App CI/CD Pipeline</p>
-                                            <p class="timestamp">Generated on: \$(date)</p>
+                                            <p>Generated on: \$(date)</p>
                                         </div>
                                         
                                         <div class="content">
@@ -260,7 +243,7 @@ pipeline {
                                                     <div class="card-title">🐳 Docker Images Built</div>
                                                     <div class="card-value">All containers built successfully</div>
                                                 </div>
-                                                <div class="status-card info">
+                                                <div class="status-card success">
                                                     <div class="card-title">🔒 Security Scans Completed</div>
                                                     <div class="card-value">Trivy vulnerability analysis finished</div>
                                                 </div>
@@ -326,7 +309,7 @@ pipeline {
                             """
                             
                             // Archive all artifacts
-                            archiveArtifacts artifacts: 'trivy-*.html,trivy-*.txt,trivy-*.json,trivy-*.sarif,security-dashboard.html', fingerprint: true
+                            archiveArtifacts artifacts: 'trivy-*.html,trivy-*.txt,trivy-*.json,security-dashboard.html', fingerprint: true
                         }
                     }
                 }
@@ -357,28 +340,73 @@ pipeline {
                 echo "🚀 Deploying application..."
                 script {
                     sh '''
-                        # Stop and remove existing containers
-                        docker-compose down 2>/dev/null || true
-        
-                        # Start the application
-                        docker-compose up -d
-        
+                        # Stop and remove only voting app containers (not SonarQube)
+                        docker stop voting-app-pipeline-vote-1 voting-app-pipeline-result-1 voting-app-pipeline-worker-1 voting-app-pipeline-redis-1 voting-app-pipeline-db-1 2>/dev/null || true
+                        docker rm voting-app-pipeline-vote-1 voting-app-pipeline-result-1 voting-app-pipeline-worker-1 voting-app-pipeline-redis-1 voting-app-pipeline-db-1 2>/dev/null || true
+                        
+                        # Create a custom docker-compose without SonarQube
+                        cat > docker-compose-deploy.yml << 'DOCKERCOMPOSE'
+                        version: "3"
+                        services:
+                          vote:
+                            build: ./vote
+                            ports:
+                              - "5000:80"
+                            networks:
+                              - front-tier
+                              - back-tier
+
+                          result:
+                            build: ./result
+                            ports:
+                              - "5001:80"
+                              - "5858:5858"
+                            networks:
+                              - front-tier
+                              - back-tier
+
+                          worker:
+                            build: ./worker
+                            networks:
+                              - back-tier
+
+                          redis:
+                            image: redis:alpine
+                            networks:
+                              - back-tier
+
+                          db:
+                            image: postgres:15-alpine
+                            environment:
+                              POSTGRES_USER: "postgres"
+                              POSTGRES_PASSWORD: "postgres"
+                            networks:
+                              - back-tier
+
+                        networks:
+                          front-tier:
+                          back-tier:
+                        DOCKERCOMPOSE
+
+                        # Deploy only the voting app using custom compose file
+                        docker-compose -f docker-compose-deploy.yml up -d
+
                         # Wait for services to start
                         sleep 20
-        
+
                         # Check application status
                         echo "📊 Application Status:"
-                        docker-compose ps
-        
+                        docker-compose -f docker-compose-deploy.yml ps
+
                         # Display URLs
                         echo "🌐 Application URLs:"
                         echo "Vote: http://localhost:5000"
                         echo "Result: http://localhost:5001"
-        
+
                         # Test connectivity
                         echo "🔍 Testing service connectivity..."
-                        curl -f http://localhost:5000 && echo "✅ Vote service is running" || echo "❌ Vote service not responding"
-                        curl -f http://localhost:5001 && echo "✅ Result service is running" || echo "❌ Result service not responding"
+                        curl -f http://localhost:5000 && echo "✅ Vote service is running" || echo "⚠️ Vote service not responding yet"
+                        curl -f http://localhost:5001 && echo "✅ Result service is running" || echo "⚠️ Result service not responding yet"
                     '''
                 }
             }
@@ -387,21 +415,8 @@ pipeline {
 
     post {
         always {
-            // Publish HTML reports if plugin is available
-            script {
-                try {
-                    publishHTML([
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: '',
-                        reportFiles: 'security-dashboard.html',
-                        reportName: 'Security Dashboard'
-                    ])
-                } catch (Exception e) {
-                    echo "HTML Publisher plugin not available, reports available as artifacts"
-                }
-            }
+            // Archive artifacts (removed publishHTML since plugin is not available)
+            archiveArtifacts artifacts: 'trivy-*.html,trivy-*.txt,trivy-*.json,security-dashboard.html', fingerprint: true
             
             cleanWs()
             
@@ -417,6 +432,10 @@ pipeline {
                 
                 Security reports are available in the build artifacts.
                 ${currentBuild.currentResult == 'SUCCESS' ? 'Application deployed successfully!' : 'Build completed with warnings.'}
+                
+                Application URLs:
+                - Vote: http://localhost:5000
+                - Result: http://localhost:5001
                 """
             )
         }
@@ -426,7 +445,16 @@ pipeline {
             echo "🌐 Application deployed at:"
             echo "   Vote: http://localhost:5000"
             echo "   Result: http://localhost:5001"
-            echo "📊 Security Dashboard available in build artifacts"
+            echo "📊 Security Dashboard and reports available in build artifacts"
+        }
+        
+        failure {
+            echo "❌ Pipeline failed!"
+            echo "🔍 Troubleshooting steps:"
+            echo "   1. Check Docker containers: docker ps -a"
+            echo "   2. Check Docker logs: docker-compose -f docker-compose-deploy.yml logs"
+            echo "   3. Check port conflicts: netstat -tulpn | grep 5000"
+            echo "   4. Check Trivy scan results in artifacts"
         }
     }
 }
