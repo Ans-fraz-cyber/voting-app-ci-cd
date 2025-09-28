@@ -22,8 +22,8 @@ pipeline {
                 echo "🔄 Cloning repository..."
                 git(
                     url: 'https://github.com/Ans-fraz-cyber/voting-app-ci-cd.git',
-                    branch: 'main',
-                    credentialsId: 'github-token'
+                    branch: 'main'
+                    // No credentials needed for public repo
                 )
             }
         }
@@ -68,47 +68,57 @@ pipeline {
             }
         }
 
-        stage('Security Scan and Push') {
-            parallel {
-                stage('Trivy Security Scan') {
-                    steps {
-                        echo "🔒 Running Trivy Security Scan..."
-                        script {
-                            sh """
-                                trivy image --format table -o trivy-vote-report.txt ${IMAGE_VOTE}:${BUILD_NUMBER}
-                                trivy image --format table -o trivy-result-report.txt ${IMAGE_RESULT}:${BUILD_NUMBER}
-                                trivy image --format table -o trivy-worker-report.txt ${IMAGE_WORKER}:${BUILD_NUMBER}
-                            """
-                            // Archive the reports
-                            archiveArtifacts artifacts: 'trivy-*.txt', fingerprint: true
-                        }
-                    }
+        stage('Trivy Security Scan') {
+            steps {
+                echo "🔒 Running Trivy Security Scan..."
+                script {
+                    sh """
+                        trivy image --format table -o trivy-vote-report.txt ${IMAGE_VOTE}:${BUILD_NUMBER}
+                        trivy image --format table -o trivy-result-report.txt ${IMAGE_RESULT}:${BUILD_NUMBER}
+                        trivy image --format table -o trivy-worker-report.txt ${IMAGE_WORKER}:${BUILD_NUMBER}
+                    """
+                    // Archive the reports
+                    archiveArtifacts artifacts: 'trivy-*.txt', fingerprint: true
+                    
+                    // Display summary in console
+                    sh """
+                        echo "🔒 SECURITY SCAN SUMMARY"
+                        echo "========================"
+                        echo "Vote Service:"
+                        cat trivy-vote-report.txt | head -10
+                        echo ""
+                        echo "Result Service:"
+                        cat trivy-result-report.txt | head -10
+                        echo ""
+                        echo "Worker Service:"
+                        cat trivy-worker-report.txt | head -10
+                    """
                 }
-                
-                stage('Push to DockerHub') {
-                    steps {
-                        echo "📤 Pushing images to DockerHub..."
-                        script {
-                            docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
-                                sh """
-                                    docker tag ${IMAGE_VOTE}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
-                                    docker tag ${IMAGE_RESULT}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
-                                    docker tag ${IMAGE_WORKER}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
+            }
+        }
 
-                                    docker tag ${IMAGE_VOTE}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-vote:latest
-                                    docker tag ${IMAGE_RESULT}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-result:latest  
-                                    docker tag ${IMAGE_WORKER}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-worker:latest
+        stage('Push to DockerHub') {
+            steps {
+                echo "📤 Pushing images to DockerHub..."
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
+                        sh """
+                            docker tag ${IMAGE_VOTE}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
+                            docker tag ${IMAGE_RESULT}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
+                            docker tag ${IMAGE_WORKER}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
 
-                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
-                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
-                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
+                            docker tag ${IMAGE_VOTE}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-vote:latest
+                            docker tag ${IMAGE_RESULT}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-result:latest  
+                            docker tag ${IMAGE_WORKER}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-worker:latest
 
-                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:latest
-                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:latest
-                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:latest
-                                """
-                            }
-                        }
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
+
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:latest
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:latest
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:latest
+                        """
                     }
                 }
             }
@@ -139,16 +149,35 @@ pipeline {
             mail(
                 to: "ansfarazkp@gmail.com",
                 subject: "Build ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "Build ${currentBuild.currentResult}. Check details: ${env.BUILD_URL}"
+                body: """
+                Pipeline Execution Complete!
+                
+                Project: ${env.JOB_NAME}
+                Build: #${env.BUILD_NUMBER}
+                Status: ${currentBuild.currentResult}
+                
+                Build URL: ${env.BUILD_URL}
+                
+                Security Reports: Download from Jenkins artifacts
+                SonarQube: http://localhost:9000/dashboard?id=voting-app
+                
+                Deployment:
+                - Vote: http://localhost:5000
+                - Result: http://localhost:5001
+                """
             )
         }
         
         success {
             echo "🎉 Pipeline executed successfully!"
+            echo "✅ SonarQube Quality Gate: PASSED"
+            echo "🔒 Trivy Security Scans: COMPLETED"
+            echo "🐳 Docker Images: PUSHED"
+            echo "🚀 Application: DEPLOYED"
         }
         
         failure {
-            echo "❌ Pipeline failed!"
+            echo "❌ Pipeline failed - check console output for details"
         }
     }
 }
