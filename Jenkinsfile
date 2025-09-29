@@ -91,8 +91,10 @@ pipeline {
                             echo "✅ Approval received via WhatsApp! Continuing build..."
                             break
                         }
-                        if(i % 12 == 0) { // Log every minute
-                            echo "⏰ Still waiting for WhatsApp approval... ($((i+1)*5) seconds passed)"
+                        // Fixed echo statement - no dollar sign issue
+                        if(i % 12 == 0) {
+                            def secondsPassed = (i + 1) * 5
+                            echo "⏰ Still waiting for WhatsApp approval... (${secondsPassed} seconds passed)"
                         }
                     }
                     
