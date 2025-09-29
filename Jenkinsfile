@@ -61,11 +61,12 @@ pipeline {
                 script {
                     echo "📲 Sending WhatsApp approval request..."
                     
-                    // Clean previous approval signal
-                    sh """
+                    // Clean previous approval files
+                    sh '''
+                        rm -f approved.txt || true
                         rm -f /tmp/jenkins_approved || true
-                        echo "✅ Cleaned previous approval file"
-                    """
+                        echo "✅ Cleaned previous approval files"
+                    '''
                     
                     // Send WhatsApp message
                     withCredentials([
@@ -85,28 +86,28 @@ pipeline {
                     echo "⏳ Waiting for your 'YES' reply on WhatsApp..."
                     echo "📱 The build will ONLY continue when you reply 'YES'"
                     
-                    // Wait for approval - check every 3 seconds
+                    // Wait for approval - check every 5 seconds
                     def approved = false
-                    def waitTime = 600 // 10 minutes max
-                    def checkCount = 0
+                    def waitCount = 0
+                    def maxWait = 120 // 10 minutes (120 * 5 seconds)
                     
-                    while (waitTime > 0 && !approved) {
-                        sleep(3000) // Wait 3 seconds
-                        waitTime -= 3
-                        checkCount++
+                    while (waitCount < maxWait && !approved) {
+                        sleep(5000) // Wait 5 seconds
+                        waitCount++
                         
-                        // Check if approval file exists
-                        approved = fileExists('/tmp/jenkins_approved')
+                        // Check multiple possible file locations
+                        approved = fileExists('approved.txt') || fileExists('/tmp/jenkins_approved')
                         
                         if (approved) {
                             echo "🎉 ✅ Approval received via WhatsApp! Continuing build..."
+                            sh "cat approved.txt || true" // Debug: show file content
                             break
                         }
                         
                         // Log every 30 seconds
-                        if (checkCount % 10 == 0) {
-                            def secondsElapsed = checkCount * 3
-                            echo "⏰ Still waiting for WhatsApp approval... (${secondsElapsed} seconds elapsed)"
+                        if (waitCount % 6 == 0) {
+                            def minutes = (waitCount * 5) / 60
+                            echo "⏰ Still waiting for WhatsApp approval... (${waitCount * 5} seconds elapsed)"
                         }
                     }
                     
@@ -117,6 +118,7 @@ pipeline {
             }
         }
 
+        // REST OF YOUR STAGES REMAIN THE SAME
         stage('Build Docker Images') {
             steps {
                 script {
@@ -189,7 +191,7 @@ pipeline {
         always {
             script { 
                 cleanWs() 
-                sh "rm -f /tmp/jenkins_approved || true"
+                sh "rm -f approved.txt || true"
             }
             mail(
                 to: "ansfarazkp@gmail.com",

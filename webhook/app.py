@@ -18,14 +18,26 @@ def whatsapp_reply():
         if "yes" in incoming_msg:
             print("✅ YES received - Creating approval file...")
             
-            # Create the approval file
+            # Create approval file in a shared location
             try:
-                with open('/tmp/jenkins_approved', 'w') as f:
-                    f.write('approved')
-                print("✅ Approval file created successfully!")
-                os.system('ls -la /tmp/jenkins_approved')  # Debug: check file
+                # Try multiple locations
+                locations = [
+                    '/var/lib/jenkins/workspace/voting-app-pipeline/approved.txt',
+                    '/tmp/jenkins_approved',
+                    './approved.txt'
+                ]
+                
+                for location in locations:
+                    try:
+                        with open(location, 'w') as f:
+                            f.write('approved')
+                        print(f"✅ Approval file created at: {location}")
+                        break
+                    except Exception as e:
+                        print(f"❌ Could not create at {location}: {e}")
+                        
             except Exception as e:
-                print(f"❌ Error creating file: {e}")
+                print(f"❌ Error creating approval file: {e}")
             
             return '''<Response>
                 <Message>✅ Build approved! Jenkins will continue immediately.</Message>
