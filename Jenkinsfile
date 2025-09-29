@@ -22,7 +22,6 @@ pipeline {
     }
 
     stages {
-        // ✅ STAGE 1: Download Code
         stage('Download Code') {
             steps {
                 echo "📥 Downloading repository..."
@@ -37,7 +36,6 @@ pipeline {
             }
         }
 
-        // ✅ STAGE 2: SonarQube Analysis
         stage('SonarQube Analysis') {
             steps {
                 echo "🔍 Running SonarQube Analysis..."
@@ -58,11 +56,10 @@ pipeline {
             }
         }
 
-        // ✅ STAGE 3: Approval via WhatsApp (AFTER SonarQube)
-        stage('Approval via WhatsApp') {
+        stage('Wait for WhatsApp Approval') {
             steps {
                 script {
-                    echo "📲 Sending WhatsApp approval request for BUILD..."
+                    echo "📲 Sending WhatsApp approval request..."
                     
                     withCredentials([
                         string(credentialsId: 'twilio-sid', variable: 'TWILIO_SID'),
@@ -72,20 +69,30 @@ pipeline {
                         curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json" \\
                         --data-urlencode "From=${TWILIO_FROM}" \\
                         --data-urlencode "To=${MY_WHATSAPP}" \\
-                        --data-urlencode "Body=🚦 BUILD Approval Needed! SonarQube completed. Reply YES to start building or NO to cancel. Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}" \\
+                        --data-urlencode "Body=🚦 BUILD Approval Needed! SonarQube completed. Reply YES to start building automatically. Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}" \\
                         -u "${TWILIO_SID}:${TWILIO_AUTH}"
                         """
                     }
                     
-                    echo "✅ WhatsApp message sent! Code downloaded and SonarQube completed."
-                    echo "📱 Waiting for your BUILD approval..."
+                    echo "✅ WhatsApp message sent! Waiting for your 'YES' reply..."
+                    echo "📱 When you reply 'YES' on WhatsApp, the build will start AUTOMATICALLY!"
                     
-                    timeout(time: 10, unit: 'MINUTES') {
-                        input(
-                            message: '✅ SonarQube completed! Did you reply YES on WhatsApp to start building?', 
-                            ok: 'Start Build',
-                            submitterParameter: 'approver'
-                        )
+                    // This input step has a specific ID that the webhook can trigger
+                    def approval = input(
+                        id: 'WhatsAppApproval',  // ✅ CRITICAL: This ID is used by webhook
+                        message: '⏳ Waiting for WhatsApp approval... Reply "YES" on WhatsApp to continue automatically.', 
+                        ok: 'Manual Proceed',
+                        parameters: [
+                            choice(
+                                name: 'ACTION',
+                                choices: ['PROCEED', 'ABORT'],
+                                description: 'Manual override if WhatsApp fails'
+                            )
+                        ]
+                    )
+                    
+                    if (approval == 'ABORT') {
+                        error("🚫 Build manually aborted!")
                     }
                     
                     echo "🎉 Build approved! Starting Docker build..."
@@ -93,7 +100,6 @@ pipeline {
             }
         }
 
-        // ✅ STAGE 4: Build Docker Images (only after approval)
         stage('Build Docker Images') {
             steps {
                 script {
