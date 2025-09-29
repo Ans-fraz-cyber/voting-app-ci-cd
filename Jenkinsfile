@@ -64,35 +64,30 @@ pipeline {
                     // Clean previous approval file
                     sh "rm -f ${APPROVAL_FILE} || true"
                     
-                    // Send email with approval instructions
-                    mail(
+                    // Send email using emailext (more reliable than mail)
+                    emailext (
                         to: "${MY_EMAIL}",
-                        subject: "APPROVAL REQUIRED: Build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        subject: "🚀 APPROVAL REQUIRED: Build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                         body: """
-                        BUILD APPROVAL NEEDED!
+                        <h2>BUILD APPROVAL NEEDED!</h2>
                         
-                        Project: ${env.JOB_NAME}
-                        Build Number: #${env.BUILD_NUMBER}
-                        Build URL: ${env.BUILD_URL}
+                        <p><strong>Project:</strong> ${env.JOB_NAME}<br>
+                        <strong>Build Number:</strong> #${env.BUILD_NUMBER}<br>
+                        <strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
                         
-                        ✅ TO APPROVE this build:
-                        Run this command on your server:
+                        <h3>✅ TO APPROVE this build:</h3>
+                        <p>Run this command on your server:</p>
+                        <pre>echo "APPROVED" > ${APPROVAL_FILE}</pre>
                         
-                        echo "APPROVED" > ${APPROVAL_FILE}
+                        <h3>❌ TO REJECT this build:</h3>
+                        <p>Run this command on your server:</p>
+                        <pre>echo "REJECTED" > ${APPROVAL_FILE}</pre>
                         
-                        ❌ TO REJECT this build:
-                        Run this command on your server:
-                        
-                        echo "REJECTED" > ${APPROVAL_FILE}
-                        
-                        OR visit: http://localhost:5000/approve?build=${env.BUILD_NUMBER}
-                        
-                        ⏰ This build will wait for 30 minutes for approval.
+                        <p><em>⏰ This build will wait for 30 minutes for approval.</em></p>
                         """
                     )
                     
                     echo "✅ Approval email sent to: ${MY_EMAIL}"
-                    echo "📋 Check your email for approval instructions"
                 }
             }
         }
@@ -103,6 +98,9 @@ pipeline {
                     echo "⏳ Waiting for manual approval..."
                     echo "📧 Check your email: ${MY_EMAIL}"
                     echo "💡 Follow the instructions in the email to approve"
+                    
+                    // Create the approval file path for easy access
+                    sh "echo 'Approval file: ${APPROVAL_FILE}'"
                     
                     // Wait for approval file to be created manually
                     timeout(time: 30, unit: 'MINUTES') {
@@ -119,7 +117,8 @@ pipeline {
                                 }
                             }
                             
-                            echo "⏰ Still waiting for approval... Check your email for instructions"
+                            // Show waiting message
+                            echo "⏰ Still waiting for approval... Run: echo 'APPROVED' > ${APPROVAL_FILE}"
                             return false
                         }
                     }
@@ -127,6 +126,7 @@ pipeline {
             }
         }
 
+        // Rest of your stages remain the same...
         stage('Build Docker Images') {
             steps {
                 script {
@@ -203,12 +203,23 @@ pipeline {
             // Clean up approval file
             sh "rm -f ${APPROVAL_FILE} || true"
             cleanWs()
-            
-            echo "📧 Sending build result email..."
+        }
+        
+        success {
+            echo "📧 Sending success email..."
             mail(
                 to: "${MY_EMAIL}",
-                subject: "Build ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "Build ${currentBuild.currentResult}! URL: ${env.BUILD_URL}"
+                subject: "Build SUCCESS - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: "Build SUCCESS! URL: ${env.BUILD_URL}"
+            )
+        }
+        
+        failure {
+            echo "📧 Sending failure email..."
+            mail(
+                to: "${MY_EMAIL}",
+                subject: "Build FAILED - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: "Build FAILED! URL: ${env.BUILD_URL}"
             )
         }
     }
