@@ -14,28 +14,32 @@ pipeline {
         IMAGE_RESULT = "voting-app-result" 
         IMAGE_WORKER = "voting-app-worker"
         DOCKERHUB_NAMESPACE = "31793179"
-        // Enable BuildKit for faster, more efficient builds
+        // BuildKit
         DOCKER_BUILDKIT = "1"
         COMPOSE_DOCKER_CLI_BUILD = "1"
         BUILDKIT_PROGRESS = "plain"
+        TWILIO_SID = credentials('twilio-sid')
+        TWILIO_AUTH = credentials('twilio-auth')
+        TWILIO_FROM = "whatsapp:+14155238886"   // Twilio Sandbox number
+        MY_WHATSAPP = "whatsapp:+92XXXXXXXXXX"  // Replace with your WhatsApp number
+        JENKINS_USER = "Ans Faraz"
+        JENKINS_TOKEN = "111fc77cf1e14c6109c62442667f178d64"
+        JENKINS_URL = "https://0640f2ef4501.ngrok-free.app"   // ngrok URL for Jenkins
+        JOB_NAME = "voting-app-pipeline"
     }
 
     stages {
         stage('Download Code') {
             steps {
                 echo "📥 Downloading repository as ZIP..."
-                script {
-                    sh '''
-                        rm -rf * .* 2>/dev/null || true
-                        curl -L -o repo.zip "https://github.com/Ans-fraz-cyber/voting-app-ci-cd/archive/main.zip"
-                        unzip -q repo.zip
-                        mv voting-app-ci-cd-main/* . 2>/dev/null || true
-                        mv voting-app-ci-cd-main/.* . 2>/dev/null || true
-                        rm -rf voting-app-ci-cd-main repo.zip
-                        echo "✅ Repository downloaded successfully"
-                        echo "🏷️ Build Number (Image Tag): ${BUILD_NUMBER}"
-                    '''
-                }
+                sh '''
+                    rm -rf * .* 2>/dev/null || true
+                    curl -L -o repo.zip "https://github.com/Ans-fraz-cyber/voting-app-ci-cd/archive/main.zip"
+                    unzip -q repo.zip
+                    mv voting-app-ci-cd-main/* . 2>/dev/null || true
+                    mv voting-app-ci-cd-main/.* . 2>/dev/null || true
+                    rm -rf voting-app-ci-cd-main repo.zip
+                '''
             }
         }
 
@@ -59,28 +63,35 @@ pipeline {
 
         stage('Smart Quality Gate') {
             steps {
-                echo "✅ Smart Quality Gate Check..."
                 script {
                     try {
                         timeout(time: 2, unit: 'MINUTES') {
                             waitForQualityGate abortPipeline: false
-                            echo "🎉 Quality Gate: PASSED"
                         }
                     } catch (Exception e) {
-                        echo "⚠️ Quality Gate: Still processing (continuing pipeline)"
-                        echo "📊 SonarQube analysis completed successfully"
-                        echo "🔗 Check results at: http://localhost:9000/dashboard?id=voting-app"
+                        echo "⚠️ Quality Gate still processing..."
                     }
                 }
             }
         }
 
-        // 🔒 WhatsApp Approval Stage
+        // 🔔 WhatsApp Approval Stage
         stage('Approval') {
             steps {
                 script {
+                    // 1️⃣ Send WhatsApp message via Twilio
+                    echo "📲 Sending WhatsApp approval request..."
+                    sh """
+                        curl -X POST https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json \\
+                        --data-urlencode "From=${TWILIO_FROM}" \\
+                        --data-urlencode "To=${MY_WHATSAPP}" \\
+                        --data-urlencode "Body=🚦 Jenkins Pipeline Approval Needed! Reply YES to approve or NO to reject." \\
+                        -u "${TWILIO_SID}:${TWILIO_AUTH}"
+                    """
+
+                    // 2️⃣ Pause pipeline until Flask webhook triggers input
                     timeout(time: 10, unit: 'MINUTES') {
-                        input message: 'Approve deployment?', ok: 'Proceed'
+                        input message: 'Approve deployment? (Check WhatsApp!)', ok: 'Proceed'
                     }
                 }
             }
@@ -88,42 +99,15 @@ pipeline {
 
         stage('Build Docker Images with BuildKit') {
             steps {
-                echo "🐳 Building Docker images with BuildKit..."
-                echo "🏷️ Using Build Number as Image Tag: ${BUILD_NUMBER}"
-                script {
-                    sh """
-                        # Enable BuildKit for faster builds with better caching
-                        export DOCKER_BUILDKIT=1
-                        export BUILDKIT_PROGRESS=plain
-                        
-                        echo "🔧 Building Vote image with BuildKit..."
-                        docker build --progress=plain \
-                            --build-arg BUILDKIT_INLINE_CACHE=1 \
-                            -t ${IMAGE_VOTE}:${BUILD_NUMBER} \
-                            -t ${IMAGE_VOTE}:latest \
-                            ./vote
-                        
-                        echo "🔧 Building Result image with BuildKit..."
-                        docker build --progress=plain \
-                            --build-arg BUILDKIT_INLINE_CACHE=1 \
-                            -t ${IMAGE_RESULT}:${BUILD_NUMBER} \
-                            -t ${IMAGE_RESULT}:latest \
-                            ./result
-                        
-                        echo "🔧 Building Worker image with BuildKit..."
-                        docker build --progress=plain \
-                            --build-arg BUILDKIT_INLINE_CACHE=1 \
-                            -t ${IMAGE_WORKER}:${BUILD_NUMBER} \
-                            -t ${IMAGE_WORKER}:latest \
-                            ./worker
-                        
-                        echo "✅ All images built successfully with BuildKit"
-                        echo "📦 Image Tags:"
-                        echo "   - ${IMAGE_VOTE}:${BUILD_NUMBER}"
-                        echo "   - ${IMAGE_RESULT}:${BUILD_NUMBER}"
-                        echo "   - ${IMAGE_WORKER}:${BUILD_NUMBER}"
-                    """
-                }
+                echo "🐳 Building Docker images..."
+                sh '''
+                    export DOCKER_BUILDKIT=1
+                    export BUILDKIT_PROGRESS=plain
+
+                    docker build --progress=plain -t ${IMAGE_VOTE}:${BUILD_NUMBER} ./vote
+                    docker build --progress=plain -t ${IMAGE_RESULT}:${BUILD_NUMBER} ./result
+                    docker build --progress=plain -t ${IMAGE_WORKER}:${BUILD_NUMBER} ./worker
+                '''
             }
         }
 
@@ -131,83 +115,29 @@ pipeline {
             parallel {
                 stage('Trivy Security Scan') {
                     steps {
-                        echo "🔒 Running Trivy Security Scan..."
-                        script {
-                            sh """
-                                # Generate HTML reports with fallback to simple format
-                                trivy image --format html -o trivy-vote.html ${IMAGE_VOTE}:${BUILD_NUMBER} || echo "HTML generation failed for vote"
-                                trivy image --format html -o trivy-result.html ${IMAGE_RESULT}:${BUILD_NUMBER} || echo "HTML generation failed for result"
-                                trivy image --format html -o trivy-worker.html ${IMAGE_WORKER}:${BUILD_NUMBER} || echo "HTML generation failed for worker"
-                                
-                                # Always generate table format as backup
-                                trivy image --format table ${IMAGE_VOTE}:${BUILD_NUMBER} > trivy-vote.txt
-                                trivy image --format table ${IMAGE_RESULT}:${BUILD_NUMBER} > trivy-result.txt
-                                trivy image --format table ${IMAGE_WORKER}:${BUILD_NUMBER} > trivy-worker.txt
-                                
-                                # Generate JSON for additional processing
-                                trivy image --format json ${IMAGE_VOTE}:${BUILD_NUMBER} > trivy-vote.json
-                                trivy image --format json ${IMAGE_RESULT}:${BUILD_NUMBER} > trivy-result.json
-                                trivy image --format json ${IMAGE_WORKER}:${BUILD_NUMBER} > trivy-worker.json
-                            """
-                            
-                            // Create enhanced security dashboard
-                            sh """
-                                cat > security-dashboard.html << EOF
-                                <!DOCTYPE html>
-                                <html lang="en">
-                                <head>
-                                    <meta charset="UTF-8">
-                                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                    <title>🛡️ Security Scan Dashboard - Build ${BUILD_NUMBER}</title>
-                                    <style>
-                                        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; padding: 20px; }
-                                        .container { background: #fff; border-radius: 10px; padding: 20px; max-width: 1200px; margin: auto; }
-                                        .header { background: #2c3e50; color: white; padding: 20px; border-radius: 10px 10px 0 0; }
-                                        .reports { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-top: 20px; }
-                                        .report-link { padding: 15px; border: 1px solid #ccc; border-radius: 8px; text-align: center; background: #f8f9fa; text-decoration: none; color: #2c3e50; }
-                                        .report-link:hover { background: #3498db; color: white; }
-                                    </style>
-                                </head>
-                                <body>
-                                    <div class="container">
-                                        <div class="header">
-                                            <h1>🛡️ Security Scan Dashboard</h1>
-                                            <p>Build #${BUILD_NUMBER} - Voting App CI/CD Pipeline</p>
-                                        </div>
-                                        <div class="reports">
-                                            <a href="trivy-vote.html" class="report-link" target="_blank">🗳️ Vote Report</a>
-                                            <a href="trivy-result.html" class="report-link" target="_blank">📈 Result Report</a>
-                                            <a href="trivy-worker.html" class="report-link" target="_blank">⚙️ Worker Report</a>
-                                        </div>
-                                    </div>
-                                </body>
-                                </html>
-                                EOF
-                            """
-                            
-                            // Archive all artifacts
-                            archiveArtifacts artifacts: 'trivy-*.html,trivy-*.txt,trivy-*.json,security-dashboard.html', fingerprint: true
-                        }
+                        echo "🔒 Running Trivy scans..."
+                        sh '''
+                            trivy image --format html -o trivy-vote.html ${IMAGE_VOTE}:${BUILD_NUMBER}
+                            trivy image --format html -o trivy-result.html ${IMAGE_RESULT}:${BUILD_NUMBER}
+                            trivy image --format html -o trivy-worker.html ${IMAGE_WORKER}:${BUILD_NUMBER}
+                        '''
+                        archiveArtifacts artifacts: 'trivy-*.html', fingerprint: true
                     }
                 }
-                
+
                 stage('Push to DockerHub') {
                     steps {
-                        echo "📤 Pushing images to DockerHub..."
-                        script {
-                            docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
-                                sh """
-                                    docker tag ${IMAGE_VOTE}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
-                                    docker tag ${IMAGE_RESULT}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
-                                    docker tag ${IMAGE_WORKER}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
+                        echo "📤 Pushing images..."
+                        docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
+                            sh '''
+                                docker tag ${IMAGE_VOTE}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
+                                docker tag ${IMAGE_RESULT}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
+                                docker tag ${IMAGE_WORKER}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
 
-                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
-                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
-                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
-                                    
-                                    echo "✅ Images pushed to DockerHub with tag: ${BUILD_NUMBER}"
-                                """
-                            }
+                                docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
+                                docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
+                                docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
+                            '''
                         }
                     }
                 }
@@ -217,92 +147,22 @@ pipeline {
         stage('Deploy Application') {
             steps {
                 echo "🚀 Deploying application..."
-                script {
-                    sh '''
-                        # Stop and remove old containers
-                        docker stop voting-app-pipeline-vote-1 voting-app-pipeline-result-1 voting-app-pipeline-worker-1 voting-app-pipeline-redis-1 voting-app-pipeline-db-1 2>/dev/null || true
-                        docker rm voting-app-pipeline-vote-1 voting-app-pipeline-result-1 voting-app-pipeline-worker-1 voting-app-pipeline-redis-1 voting-app-pipeline-db-1 2>/dev/null || true
-                        
-                        # Create custom docker-compose for deployment
-                        cat > docker-compose-deploy.yml << 'DOCKERCOMPOSE'
-                        version: "3"
-                        services:
-                          vote:
-                            build: ./vote
-                            ports:
-                              - "5000:80"
-                            networks:
-                              - front-tier
-                              - back-tier
-
-                          result:
-                            build: ./result
-                            ports:
-                              - "5001:80"
-                              - "5858:5858"
-                            networks:
-                              - front-tier
-                              - back-tier
-
-                          worker:
-                            build: ./worker
-                            networks:
-                              - back-tier
-
-                          redis:
-                            image: redis:alpine
-                            networks:
-                              - back-tier
-
-                          db:
-                            image: postgres:15-alpine
-                            environment:
-                              POSTGRES_USER: "postgres"
-                              POSTGRES_PASSWORD: "postgres"
-                            networks:
-                              - back-tier
-
-                        networks:
-                          front-tier:
-                          back-tier:
-                        DOCKERCOMPOSE
-
-                        # Deploy only voting app services
-                        docker-compose -f docker-compose-deploy.yml up -d
-                        sleep 20
-                        docker-compose -f docker-compose-deploy.yml ps
-
-                        echo "🌐 Vote: http://localhost:5000"
-                        echo "🌐 Result: http://localhost:5001"
-                    '''
-                }
+                sh '''
+                    docker-compose down || true
+                    docker-compose up -d
+                '''
             }
         }
     }
 
     post {
         always {
-            archiveArtifacts artifacts: 'trivy-*.html,trivy-*.txt,trivy-*.json,security-dashboard.html', fingerprint: true
             cleanWs()
             mail(
                 to: "ansfarazkp@gmail.com",
                 subject: "Build ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: """
-                Build ${currentBuild.currentResult}!
-                
-                Project: ${env.JOB_NAME}
-                Build Number (Image Tag): #${env.BUILD_NUMBER}
-                URL: ${env.BUILD_URL}
-                """
+                body: "Build ${currentBuild.currentResult}! URL: ${env.BUILD_URL}"
             )
-        }
-        
-        success {
-            echo "🎉 Pipeline executed successfully!"
-        }
-        
-        failure {
-            echo "❌ Pipeline failed!"
         }
     }
 }
