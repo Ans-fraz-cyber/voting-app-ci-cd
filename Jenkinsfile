@@ -17,12 +17,54 @@ pipeline {
         COMPOSE_DOCKER_CLI_BUILD = "1"
         BUILDKIT_PROGRESS = "plain"
         TWILIO_FROM = "whatsapp:+14155238886"
-        MY_WHATSAPP = "whatsapp:+92XXXXXXXXXX"
-        JENKINS_URL = "https://65d1b1133b29.ngrok-free.app"
-        JOB_NAME = "voting-app-pipeline"
+        MY_WHATSAPP = "whatsapp:+923066818972"  // ✅ Your actual number
+        WEBHOOK_URL = "https://65d1b1133b29.ngrok-free.app"
     }
 
     stages {
+        // ✅ APPROVAL STAGE MOVED TO TOP - BEFORE ANY BUILD
+        stage('Approval via WhatsApp') {
+            steps {
+                script {
+                    echo "📲 Sending WhatsApp approval request..."
+                    
+                    // Test webhook connectivity
+                    sh """
+                        echo "Testing webhook connectivity..."
+                        curl -s -o /dev/null -w "HTTP Status: %{http_code}" ${WEBHOOK_URL}/health || true
+                    """
+                    
+                    // Send WhatsApp message
+                    withCredentials([
+                        string(credentialsId: 'twilio-sid', variable: 'TWILIO_SID'),
+                        string(credentialsId: 'twilio-auth', variable: 'TWILIO_AUTH')
+                    ]) {
+                        sh """
+                        curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json" \\
+                        --data-urlencode "From=${TWILIO_FROM}" \\
+                        --data-urlencode "To=${MY_WHATSAPP}" \\
+                        --data-urlencode "Body=🚦 Jenkins Pipeline Approval Needed! Reply YES to approve or NO to reject. Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}" \\
+                        -u "${TWILIO_SID}:${TWILIO_AUTH}"
+                        """
+                    }
+                    
+                    echo "✅ WhatsApp message sent! Waiting for your response..."
+                    echo "📱 Please check WhatsApp and reply YES or NO"
+                    
+                    // Wait for manual input in Jenkins
+                    timeout(time: 10, unit: 'MINUTES') {
+                        input(
+                            message: '✅ Did you reply YES on WhatsApp? Click Proceed to continue.', 
+                            ok: 'Proceed',
+                            submitterParameter: 'approver'
+                        )
+                    }
+                    
+                    echo "🎉 Approval process completed! Continuing pipeline..."
+                }
+            }
+        }
+
         stage('Download Code') {
             steps {
                 echo "📥 Downloading repository..."
@@ -52,30 +94,6 @@ pipeline {
                                   -Dsonar.login=${SONAR_AUTH_TOKEN}
                             """
                         }
-                    }
-                }
-            }
-        }
-
-        stage('Approval via WhatsApp') {
-            steps {
-                script {
-                    echo "📲 Sending WhatsApp approval request..."
-                    withCredentials([
-                        string(credentialsId: 'twilio-sid', variable: 'TWILIO_SID'),
-                        string(credentialsId: 'twilio-auth', variable: 'TWILIO_AUTH')
-                    ]) {
-                        sh """
-                        curl -X POST https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json \\
-                        --data-urlencode "From=${TWILIO_FROM}" \\
-                        --data-urlencode "To=${MY_WHATSAPP}" \\
-                        --data-urlencode "Body=🚦 Jenkins Pipeline Approval Needed! Reply YES to approve or NO to reject." \\
-                        -u "${TWILIO_SID}:${TWILIO_AUTH}"
-                        """
-                    }
-
-                    timeout(time: 10, unit: 'MINUTES') {
-                        input message: 'Approve deployment? (Check WhatsApp!)', ok: 'Proceed'
                     }
                 }
             }
