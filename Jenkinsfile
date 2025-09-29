@@ -17,7 +17,7 @@ pipeline {
         COMPOSE_DOCKER_CLI_BUILD = "1"
         BUILDKIT_PROGRESS = "plain"
         TWILIO_FROM = "whatsapp:+14155238886"
-        MY_WHATSAPP = "whatsapp:+92XXXXXXXXXX"  // your WhatsApp number
+        MY_WHATSAPP = "whatsapp:+92XXXXXXXXXX"
         JENKINS_URL = "https://65d1b1133b29.ngrok-free.app"
         JOB_NAME = "voting-app-pipeline"
     }
@@ -52,22 +52,6 @@ pipeline {
                                   -Dsonar.login=${SONAR_AUTH_TOKEN}
                             """
                         }
-                    }
-                }
-            }
-        }
-
-        // Quality Gate temporarily non-blocking
-        stage('Smart Quality Gate (Non-blocking)') {
-            steps {
-                script {
-                    echo "⏳ Checking SonarQube Quality Gate (non-blocking)..."
-                    try {
-                        timeout(time: 2, unit: 'MINUTES') {
-                            waitForQualityGate abortPipeline: false
-                        }
-                    } catch(Exception e) {
-                        echo "⚠️ Quality Gate check skipped due to timeout or error."
                     }
                 }
             }
@@ -156,9 +140,7 @@ pipeline {
 
     post {
         always {
-            script {
-                cleanWs()
-            }
+            script { cleanWs() }
             mail(
                 to: "ansfarazkp@gmail.com",
                 subject: "Build ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
