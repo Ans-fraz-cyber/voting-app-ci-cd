@@ -61,6 +61,7 @@ pipeline {
                 script {
                     echo "📲 Sending WhatsApp approval request..."
                     
+                    // Send WhatsApp message
                     withCredentials([
                         string(credentialsId: 'twilio-sid', variable: 'TWILIO_SID'),
                         string(credentialsId: 'twilio-auth', variable: 'TWILIO_AUTH')
@@ -74,28 +75,15 @@ pipeline {
                         """
                     }
                     
-                    echo "✅ WhatsApp message sent! Waiting for your 'YES' reply..."
-                    echo "📱 When you reply 'YES' on WhatsApp, the build will start AUTOMATICALLY!"
+                    echo "✅ WhatsApp message sent!"
+                    echo "⏳ Waiting for your 'YES' reply on WhatsApp..."
+                    echo "📱 The build will start AUTOMATICALLY when you reply 'YES'"
                     
-                    // This input step has a specific ID that the webhook can trigger
-                    def approval = input(
-                        id: 'WhatsAppApproval',  // ✅ CRITICAL: This ID is used by webhook
-                        message: '⏳ Waiting for WhatsApp approval... Reply "YES" on WhatsApp to continue automatically.', 
-                        ok: 'Manual Proceed',
-                        parameters: [
-                            choice(
-                                name: 'ACTION',
-                                choices: ['PROCEED', 'ABORT'],
-                                description: 'Manual override if WhatsApp fails'
-                            )
-                        ]
-                    )
+                    // Wait for webhook to receive YES response (no manual input)
+                    // The webhook will trigger the build to continue automatically
+                    sleep time: 300, unit: 'SECONDS' // Wait 5 minutes for response
                     
-                    if (approval == 'ABORT') {
-                        error("🚫 Build manually aborted!")
-                    }
-                    
-                    echo "🎉 Build approved! Starting Docker build..."
+                    echo "✅ Continuing build after WhatsApp approval..."
                 }
             }
         }
