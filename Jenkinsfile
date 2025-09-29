@@ -70,33 +70,33 @@ pipeline {
                         curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json" \\
                         --data-urlencode "From=${TWILIO_FROM}" \\
                         --data-urlencode "To=${MY_WHATSAPP}" \\
-                        --data-urlencode "Body=🚦 BUILD Approval Needed! SonarQube completed. Reply YES to continue AUTOMATICALLY. Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}" \\
+                        --data-urlencode "Body=🚦 BUILD Approval Needed! SonarQube completed. Reply YES on WhatsApp, then CLICK THE PROCEED BUTTON in Jenkins to continue. Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}" \\
                         -u "${TWILIO_SID}:${TWILIO_AUTH}"
                         """
                     }
                     
                     echo "✅ WhatsApp message sent!"
-                    echo "⏳ Waiting for your 'YES' reply on WhatsApp..."
-                    echo "📱 The build will continue AUTOMATICALLY when you reply 'YES'"
+                    echo ""
+                    echo "🎯 IMPORTANT: After replying YES on WhatsApp, you MUST:"
+                    echo "1. Go to Jenkins pipeline view"
+                    echo "2. Find the 'Wait for WhatsApp Approval' stage" 
+                    echo "3. Click the 'PROCEED' button that appears"
+                    echo "4. Pipeline will continue to build stage"
+                    echo ""
                     
-                    // This input step can be triggered via API
+                    // Simple input that works 100%
                     timeout(time: 10, unit: 'MINUTES') {
                         input(
-                            id: 'WhatsAppApproval',
-                            message: '⏳ Waiting for WhatsApp approval... Reply YES on WhatsApp to continue automatically.',
-                            ok: 'Manual Proceed',
-                            parameters: [
-                                string(name: 'APPROVE', defaultValue: 'false', description: 'Approved via WhatsApp')
-                            ]
+                            message: '🔔 Check WhatsApp! Did you reply YES? Click PROCEED to continue building.',
+                            ok: 'PROCEED'
                         )
                     }
                     
-                    echo "🎉 Build approved! Continuing..."
+                    echo "🎉 Build approved! Continuing to build stage..."
                 }
             }
         }
 
-        // REST OF YOUR STAGES...
         stage('Build Docker Images') {
             steps {
                 script {
