@@ -62,7 +62,7 @@ pipeline {
                     echo "📲 Sending WhatsApp approval request..."
                     
                     // Clean previous approval signal
-                    sh "rm -f /tmp/jenkins_approved"
+                    sh "rm -f /tmp/jenkins_approved || true"
                     
                     // Send WhatsApp message
                     withCredentials([
@@ -91,7 +91,6 @@ pipeline {
                             echo "✅ Approval received via WhatsApp! Continuing build..."
                             break
                         }
-                        // Fixed echo statement - no dollar sign issue
                         if(i % 12 == 0) {
                             def secondsPassed = (i + 1) * 5
                             echo "⏰ Still waiting for WhatsApp approval... (${secondsPassed} seconds passed)"
@@ -123,12 +122,19 @@ pipeline {
         stage('Trivy Security Scan') {
             steps {
                 script {
+                    echo "🔒 Running Trivy Security Scan..."
+                    // FIXED: Use correct Trivy format options
                     sh '''
-                        trivy image --format html -o trivy-vote.html ${IMAGE_VOTE}:${BUILD_NUMBER}
-                        trivy image --format html -o trivy-result.html ${IMAGE_RESULT}:${BUILD_NUMBER}
-                        trivy image --format html -o trivy-worker.html ${IMAGE_WORKER}:${BUILD_NUMBER}
+                        trivy image --format table -o trivy-vote.txt ${IMAGE_VOTE}:${BUILD_NUMBER}
+                        trivy image --format table -o trivy-result.txt ${IMAGE_RESULT}:${BUILD_NUMBER}
+                        trivy image --format table -o trivy-worker.txt ${IMAGE_WORKER}:${BUILD_NUMBER}
+                        
+                        # Generate JSON reports for artifacts
+                        trivy image --format json -o trivy-vote.json ${IMAGE_VOTE}:${BUILD_NUMBER}
+                        trivy image --format json -o trivy-result.json ${IMAGE_RESULT}:${BUILD_NUMBER}
+                        trivy image --format json -o trivy-worker.json ${IMAGE_WORKER}:${BUILD_NUMBER}
                     '''
-                    archiveArtifacts artifacts: 'trivy-*.html', fingerprint: true
+                    archiveArtifacts artifacts: 'trivy-*.txt,trivy-*.json', fingerprint: true
                 }
             }
         }
@@ -136,6 +142,7 @@ pipeline {
         stage('Push Docker Images') {
             steps {
                 script {
+                    echo "📤 Pushing Docker images to DockerHub..."
                     docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
                         sh """
                             docker tag ${IMAGE_VOTE}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
@@ -154,8 +161,12 @@ pipeline {
         stage('Deploy Application') {
             steps {
                 script {
+                    echo "🚀 Deploying Application..."
                     sh '''
                         docker-compose down || true
+                        IMAGE_VOTE=${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER} \
+                        IMAGE_RESULT=${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER} \
+                        IMAGE_WORKER=${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER} \
                         docker-compose up -d
                     '''
                 }
@@ -167,8 +178,8 @@ pipeline {
         always {
             script { 
                 cleanWs() 
-                // Clean up approval signal
-                sh "rm -f /tmp/jenkins_approved"
+                // Safe cleanup - won't fail if file doesn't exist
+                sh "rm -f /tmp/jenkins_approved || true"
             }
             mail(
                 to: "ansfarazkp@gmail.com",
