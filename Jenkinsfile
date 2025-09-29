@@ -70,19 +70,24 @@ pipeline {
                         curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json" \\
                         --data-urlencode "From=${TWILIO_FROM}" \\
                         --data-urlencode "To=${MY_WHATSAPP}" \\
-                        --data-urlencode "Body=🚦 BUILD Approval Needed! SonarQube completed. Reply YES on WhatsApp, then click PROCEED below. Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}" \\
+                        --data-urlencode "Body=🚦 BUILD Approval Needed! SonarQube completed. Reply YES to continue AUTOMATICALLY. Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}" \\
                         -u "${TWILIO_SID}:${TWILIO_AUTH}"
                         """
                     }
                     
                     echo "✅ WhatsApp message sent!"
-                    echo "📱 Please reply YES on WhatsApp, then click PROCEED below to continue"
+                    echo "⏳ Waiting for your 'YES' reply on WhatsApp..."
+                    echo "📱 The build will continue AUTOMATICALLY when you reply 'YES'"
                     
-                    // SIMPLE RELIABLE INPUT - This works 100%
+                    // This input step can be triggered via API
                     timeout(time: 10, unit: 'MINUTES') {
                         input(
-                            message: '✅ Did you reply YES on WhatsApp? Click PROCEED to continue building.',
-                            ok: 'PROCEED'
+                            id: 'WhatsAppApproval',
+                            message: '⏳ Waiting for WhatsApp approval... Reply YES on WhatsApp to continue automatically.',
+                            ok: 'Manual Proceed',
+                            parameters: [
+                                string(name: 'APPROVE', defaultValue: 'false', description: 'Approved via WhatsApp')
+                            ]
                         )
                     }
                     
@@ -91,6 +96,7 @@ pipeline {
             }
         }
 
+        // REST OF YOUR STAGES...
         stage('Build Docker Images') {
             steps {
                 script {
