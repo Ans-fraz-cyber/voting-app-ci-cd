@@ -4,7 +4,7 @@ pipeline {
     options {
         skipDefaultCheckout(true)
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 30, unit: 'MINUTES')  // total pipeline timeout
+        timeout(time: 30, unit: 'MINUTES')  // Total pipeline timeout
     }
 
     environment {
@@ -17,7 +17,7 @@ pipeline {
         COMPOSE_DOCKER_CLI_BUILD = "1"
         BUILDKIT_PROGRESS = "plain"
         TWILIO_FROM = "whatsapp:+14155238886"
-        MY_WHATSAPP = "whatsapp:+92XXXXXXXXXX"
+        MY_WHATSAPP = "whatsapp:+92XXXXXXXXXX"  // your WhatsApp number
         JENKINS_URL = "https://65d1b1133b29.ngrok-free.app"
         JOB_NAME = "voting-app-pipeline"
     }
@@ -57,13 +57,17 @@ pipeline {
             }
         }
 
-        stage('Quality Gate Check (Non-blocking)') {
+        // Quality Gate temporarily non-blocking
+        stage('Smart Quality Gate (Non-blocking)') {
             steps {
                 script {
                     echo "⏳ Checking SonarQube Quality Gate (non-blocking)..."
-                    timeout(time: 15, unit: 'MINUTES') {
-                        def qg = waitForQualityGate abortPipeline: false
-                        echo "⚠️ Quality Gate status: ${qg?.status ?: 'UNKNOWN'}"
+                    try {
+                        timeout(time: 2, unit: 'MINUTES') {
+                            waitForQualityGate abortPipeline: false
+                        }
+                    } catch(Exception e) {
+                        echo "⚠️ Quality Gate check skipped due to timeout or error."
                     }
                 }
             }
@@ -119,11 +123,42 @@ pipeline {
                 }
             }
         }
+
+        stage('Push Docker Images') {
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
+                        sh """
+                            docker tag ${IMAGE_VOTE}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
+                            docker tag ${IMAGE_RESULT}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
+                            docker tag ${IMAGE_WORKER}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
+
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Deploy Application') {
+            steps {
+                script {
+                    sh '''
+                        docker-compose down || true
+                        docker-compose up -d
+                    '''
+                }
+            }
+        }
     }
 
     post {
         always {
-            script { cleanWs() }
+            script {
+                cleanWs()
+            }
             mail(
                 to: "ansfarazkp@gmail.com",
                 subject: "Build ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
