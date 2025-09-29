@@ -4,7 +4,7 @@ pipeline {
     options {
         skipDefaultCheckout(true)
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 15, unit: 'MINUTES')
+        timeout(time: 30, unit: 'MINUTES')  // Total pipeline timeout
     }
 
     environment {
@@ -16,9 +16,9 @@ pipeline {
         DOCKER_BUILDKIT = "1"
         COMPOSE_DOCKER_CLI_BUILD = "1"
         BUILDKIT_PROGRESS = "plain"
-        TWILIO_FROM = "whatsapp:+14155238886"   // Twilio Sandbox
-        MY_WHATSAPP = "whatsapp:+92XXXXXXXXXX"  // Your WhatsApp number
-        JENKINS_URL = "https://65d1b1133b29.ngrok-free.app"  // Update if ngrok changes
+        TWILIO_FROM = "whatsapp:+14155238886"
+        MY_WHATSAPP = "whatsapp:+92XXXXXXXXXX"
+        JENKINS_URL = "https://65d1b1133b29.ngrok-free.app"
         JOB_NAME = "voting-app-pipeline"
     }
 
@@ -43,13 +43,15 @@ pipeline {
                 withSonarQubeEnv("${SONARQUBE}") {
                     script {
                         def scannerHome = tool 'SonarQubeScanner'
-                        sh """
-                            ${scannerHome}/bin/sonar-scanner \
-                              -Dsonar.projectKey=voting-app \
-                              -Dsonar.projectName=voting-app \
-                              -Dsonar.sources=. \
-                              -Dsonar.login=${SONAR_AUTH_TOKEN}
-                        """
+                        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_AUTH_TOKEN')]) {
+                            sh """
+                                ${scannerHome}/bin/sonar-scanner \
+                                  -Dsonar.projectKey=voting-app \
+                                  -Dsonar.projectName=voting-app \
+                                  -Dsonar.sources=. \
+                                  -Dsonar.login=${SONAR_AUTH_TOKEN}
+                            """
+                        }
                     }
                 }
             }
@@ -58,12 +60,14 @@ pipeline {
         stage('Smart Quality Gate') {
             steps {
                 script {
-                    try {
-                        timeout(time: 2, unit: 'MINUTES') {
-                            waitForQualityGate abortPipeline: false
+                    echo "⏳ Waiting for SonarQube Quality Gate..."
+                    timeout(time: 15, unit: 'MINUTES') {
+                        def qg = waitForQualityGate abortPipeline: true
+                        if (qg.status != 'OK') {
+                            error "❌ Quality Gate failed with status: ${qg.status}"
+                        } else {
+                            echo "✅ Quality Gate passed!"
                         }
-                    } catch (Exception e) {
-                        echo "⚠️ Quality Gate still processing..."
                     }
                 }
             }
@@ -73,8 +77,10 @@ pipeline {
             steps {
                 script {
                     echo "📲 Sending WhatsApp approval request..."
-                    withCredentials([string(credentialsId: 'twilio-sid', variable: 'TWILIO_SID'),
-                                     string(credentialsId: 'twilio-auth', variable: 'TWILIO_AUTH')]) {
+                    withCredentials([
+                        string(credentialsId: 'twilio-sid', variable: 'TWILIO_SID'),
+                        string(credentialsId: 'twilio-auth', variable: 'TWILIO_AUTH')
+                    ]) {
                         sh """
                         curl -X POST https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json \\
                         --data-urlencode "From=${TWILIO_FROM}" \\
