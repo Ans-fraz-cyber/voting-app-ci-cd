@@ -16,9 +16,8 @@ pipeline {
         DOCKER_BUILDKIT = "1"
         COMPOSE_DOCKER_CLI_BUILD = "1"
         BUILDKIT_PROGRESS = "plain"
-        TWILIO_FROM = "whatsapp:+14155238886"
-        MY_WHATSAPP = "whatsapp:+923066818972"
-        WEBHOOK_URL = "https://65d1b1133b29.ngrok-free.app"
+        MY_EMAIL = "ansfaraz.cyber@gmail.com"
+        APPROVAL_FILE = "/tmp/build_${BUILD_NUMBER}_approved"
     }
 
     stages {
@@ -57,46 +56,72 @@ pipeline {
             }
         }
 
-        stage('Wait for WhatsApp Approval') {
+        stage('Send Email for Approval') {
             steps {
                 script {
-                    echo "📲 Sending WhatsApp approval request..."
+                    echo "📧 Sending approval email..."
                     
-                    // Send WhatsApp message via Twilio
-                    withCredentials([
-                        string(credentialsId: 'twilio-sid', variable: 'TWILIO_SID'),
-                        string(credentialsId: 'twilio-auth', variable: 'TWILIO_AUTH')
-                    ]) {
-                        sh """
-                            curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json" \\
-                            --data-urlencode "From=${TWILIO_FROM}" \\
-                            --data-urlencode "To=${MY_WHATSAPP}" \\
-                            --data-urlencode "Body=🚦 BUILD Approval Needed! SonarQube completed. Reply YES to continue automatically. Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}" \\
-                            -u "${TWILIO_SID}:${TWILIO_AUTH}"
+                    // Clean previous approval file
+                    sh "rm -f ${APPROVAL_FILE} || true"
+                    
+                    // Send email with approval instructions
+                    mail(
+                        to: "${MY_EMAIL}",
+                        subject: "APPROVAL REQUIRED: Build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        body: """
+                        BUILD APPROVAL NEEDED!
+                        
+                        Project: ${env.JOB_NAME}
+                        Build Number: #${env.BUILD_NUMBER}
+                        Build URL: ${env.BUILD_URL}
+                        
+                        ✅ TO APPROVE this build:
+                        Run this command on your server:
+                        
+                        echo "APPROVED" > ${APPROVAL_FILE}
+                        
+                        ❌ TO REJECT this build:
+                        Run this command on your server:
+                        
+                        echo "REJECTED" > ${APPROVAL_FILE}
+                        
+                        OR visit: http://localhost:5000/approve?build=${env.BUILD_NUMBER}
+                        
+                        ⏰ This build will wait for 30 minutes for approval.
                         """
-                    }
-                    
-                    echo "✅ WhatsApp message sent!"
-                    echo "⏳ Waiting for WhatsApp approval..."
-                    echo "💡 Reply 'YES' on WhatsApp to continue automatically"
-                    
-                    // Input step that can be triggered via webhook
-                    def approval = input(
-                        id: 'WhatsAppApproval',
-                        message: '📱 Waiting for WhatsApp approval. Reply YES on WhatsApp to continue automatically.', 
-                        submitterParameter: 'approver',
-                        parameters: [
-                            booleanParam(
-                                name: 'APPROVE',
-                                defaultValue: false,
-                                description: 'Automatically set to true when you reply YES on WhatsApp'
-                            )
-                        ]
                     )
                     
-                    if (approval) {
-                        echo "🎉 WhatsApp approval received from ${approval}!"
-                        echo "🚀 Continuing pipeline automatically..."
+                    echo "✅ Approval email sent to: ${MY_EMAIL}"
+                    echo "📋 Check your email for approval instructions"
+                }
+            }
+        }
+
+        stage('Wait for Manual Approval') {
+            steps {
+                script {
+                    echo "⏳ Waiting for manual approval..."
+                    echo "📧 Check your email: ${MY_EMAIL}"
+                    echo "💡 Follow the instructions in the email to approve"
+                    
+                    // Wait for approval file to be created manually
+                    timeout(time: 30, unit: 'MINUTES') {
+                        waitUntil {
+                            sleep 10  // Check every 10 seconds
+                            
+                            if (fileExists(APPROVAL_FILE)) {
+                                def status = sh(script: "cat ${APPROVAL_FILE}", returnStdout: true).trim()
+                                if (status == "APPROVED") {
+                                    echo "🎉 Build approved! Continuing pipeline..."
+                                    return true
+                                } else if (status == "REJECTED") {
+                                    error "❌ Build rejected!"
+                                }
+                            }
+                            
+                            echo "⏰ Still waiting for approval... Check your email for instructions"
+                            return false
+                        }
                     }
                 }
             }
@@ -107,17 +132,10 @@ pipeline {
                 script {
                     echo "🏗️ Building Docker images..."
                     sh '''
-                        echo "Building Vote image..."
                         docker build --progress=plain -t ${IMAGE_VOTE}:${BUILD_NUMBER} ./vote
-                        
-                        echo "Building Result image..."
                         docker build --progress=plain -t ${IMAGE_RESULT}:${BUILD_NUMBER} ./result
-                        
-                        echo "Building Worker image..."
                         docker build --progress=plain -t ${IMAGE_WORKER}:${BUILD_NUMBER} ./worker
-                        
                         echo "✅ All images built successfully!"
-                        docker images | grep voting-app
                     '''
                 }
             }
@@ -128,15 +146,9 @@ pipeline {
                 script {
                     echo "🔒 Running Trivy Security Scan..."
                     sh '''
-                        echo "Scanning Vote image..."
                         trivy image --format table -o trivy-vote.txt ${IMAGE_VOTE}:${BUILD_NUMBER} || true
-                        
-                        echo "Scanning Result image..."
                         trivy image --format table -o trivy-result.txt ${IMAGE_RESULT}:${BUILD_NUMBER} || true
-                        
-                        echo "Scanning Worker image..."
                         trivy image --format table -o trivy-worker.txt ${IMAGE_WORKER}:${BUILD_NUMBER} || true
-                        
                         echo "✅ Security scans completed!"
                     '''
                     archiveArtifacts artifacts: 'trivy-*.txt', fingerprint: true
@@ -150,19 +162,14 @@ pipeline {
                     echo "📤 Pushing Docker images to DockerHub..."
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh '''
-                            echo "Logging into DockerHub..."
                             echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin
                             
-                            echo "Tagging and pushing Vote image..."
                             docker tag ${IMAGE_VOTE}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
-                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
-                            
-                            echo "Tagging and pushing Result image..."
                             docker tag ${IMAGE_RESULT}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
-                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
-                            
-                            echo "Tagging and pushing Worker image..."
                             docker tag ${IMAGE_WORKER}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
+
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
+                            docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
                             docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
                             
                             echo "✅ All images pushed to DockerHub!"
@@ -177,10 +184,7 @@ pipeline {
                 script {
                     echo "🚀 Deploying Application..."
                     sh '''
-                        echo "Stopping existing containers..."
                         docker-compose down || true
-                        
-                        echo "Starting new deployment..."
                         IMAGE_VOTE=${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER} \
                         IMAGE_RESULT=${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER} \
                         IMAGE_WORKER=${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER} \
@@ -196,64 +200,16 @@ pipeline {
 
     post {
         always {
-            echo "🧹 Cleaning workspace..."
+            // Clean up approval file
+            sh "rm -f ${APPROVAL_FILE} || true"
             cleanWs()
             
-            echo "📧 Sending build notification..."
+            echo "📧 Sending build result email..."
             mail(
-                to: "ansfarazkp@gmail.com",
+                to: "${MY_EMAIL}",
                 subject: "Build ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: """
-                Build ${currentBuild.currentResult}!
-                
-                Job: ${env.JOB_NAME}
-                Build: #${env.BUILD_NUMBER}
-                URL: ${env.BUILD_URL}
-                Status: ${currentBuild.currentResult}
-                
-                -- Jenkins CI/CD
-                """
+                body: "Build ${currentBuild.currentResult}! URL: ${env.BUILD_URL}"
             )
-            
-            echo "✅ Pipeline completed!"
-        }
-        
-        success {
-            echo "🎉 BUILD SUCCESSFUL!"
-            script {
-                // Send success WhatsApp notification
-                withCredentials([
-                    string(credentialsId: 'twilio-sid', variable: 'TWILIO_SID'),
-                    string(credentialsId: 'twilio-auth', variable: 'TWILIO_AUTH')
-                ]) {
-                    sh """
-                        curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json" \\
-                        --data-urlencode "From=${TWILIO_FROM}" \\
-                        --data-urlencode "To=${MY_WHATSAPP}" \\
-                        --data-urlencode "Body=✅ BUILD SUCCESS! Voting App deployed successfully. Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}" \\
-                        -u "${TWILIO_SID}:${TWILIO_AUTH}" || true
-                    """
-                }
-            }
-        }
-        
-        failure {
-            echo "❌ BUILD FAILED!"
-            script {
-                // Send failure WhatsApp notification
-                withCredentials([
-                    string(credentialsId: 'twilio-sid', variable: 'TWILIO_SID'),
-                    string(credentialsId: 'twilio-auth', variable: 'TWILIO_AUTH')
-                ]) {
-                    sh """
-                        curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json" \\
-                        --data-urlencode "From=${TWILIO_FROM}" \\
-                        --data-urlencode "To=${MY_WHATSAPP}" \\
-                        --data-urlencode "Body=❌ BUILD FAILED! Check Jenkins: ${env.BUILD_URL}" \\
-                        -u "${TWILIO_SID}:${TWILIO_AUTH}" || true
-                    """
-                }
-            }
         }
     }
 }
