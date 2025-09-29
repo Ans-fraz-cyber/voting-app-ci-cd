@@ -62,7 +62,10 @@ pipeline {
                     echo "📲 Sending WhatsApp approval request..."
                     
                     // Clean previous approval signal
-                    sh "rm -f /tmp/jenkins_approved || true"
+                    sh """
+                        rm -f /tmp/jenkins_approved || true
+                        echo "✅ Cleaned previous approval file"
+                    """
                     
                     // Send WhatsApp message
                     withCredentials([
@@ -82,29 +85,32 @@ pipeline {
                     echo "⏳ Waiting for your 'YES' reply on WhatsApp..."
                     echo "📱 The build will ONLY continue when you reply 'YES'"
                     
-                    // FIXED: Wait for REAL approval - check every 2 seconds for 10 minutes
+                    // Wait for approval - check every 3 seconds
                     def approved = false
-                    def maxWaitTime = 600 // 10 minutes in seconds
-                    def checkInterval = 2 // Check every 2 seconds
-                    def totalChecks = maxWaitTime / checkInterval
+                    def waitTime = 600 // 10 minutes max
+                    def checkCount = 0
                     
-                    for(int i = 0; i < totalChecks; i++) {
-                        sleep(checkInterval * 1000) // Wait 2 seconds
+                    while (waitTime > 0 && !approved) {
+                        sleep(3000) // Wait 3 seconds
+                        waitTime -= 3
+                        checkCount++
+                        
+                        // Check if approval file exists
                         approved = fileExists('/tmp/jenkins_approved')
                         
-                        if(approved) {
-                            echo "✅ Approval received via WhatsApp! Continuing build..."
+                        if (approved) {
+                            echo "🎉 ✅ Approval received via WhatsApp! Continuing build..."
                             break
                         }
                         
-                        // Log every 30 seconds so you know it's still waiting
-                        if(i % 15 == 0) {
-                            def minutesWaiting = (i * checkInterval) / 60
-                            echo "⏰ Still waiting for WhatsApp approval... (${(i * checkInterval)} seconds elapsed)"
+                        // Log every 30 seconds
+                        if (checkCount % 10 == 0) {
+                            def secondsElapsed = checkCount * 3
+                            echo "⏰ Still waiting for WhatsApp approval... (${secondsElapsed} seconds elapsed)"
                         }
                     }
                     
-                    if(!approved) {
+                    if (!approved) {
                         error("❌ No approval received within 10 minutes. Pipeline stopped.")
                     }
                 }
@@ -168,10 +174,7 @@ pipeline {
                 script {
                     echo "🚀 Deploying Application..."
                     sh '''
-                        # Stop only voting app containers (preserve SonarQube)
                         docker-compose down || true
-                        
-                        # Deploy with new images
                         IMAGE_VOTE=${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER} \
                         IMAGE_RESULT=${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER} \
                         IMAGE_WORKER=${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER} \
@@ -186,7 +189,6 @@ pipeline {
         always {
             script { 
                 cleanWs() 
-                // Safe cleanup
                 sh "rm -f /tmp/jenkins_approved || true"
             }
             mail(
