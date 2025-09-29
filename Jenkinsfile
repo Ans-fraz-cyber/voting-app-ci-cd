@@ -73,32 +73,39 @@ pipeline {
                         curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json" \\
                         --data-urlencode "From=${TWILIO_FROM}" \\
                         --data-urlencode "To=${MY_WHATSAPP}" \\
-                        --data-urlencode "Body=🚦 BUILD Approval Needed! SonarQube completed. Reply YES to start building IMMEDIATELY. Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}" \\
+                        --data-urlencode "Body=🚦 BUILD Approval Needed! SonarQube completed. Reply YES to start building. Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}" \\
                         -u "${TWILIO_SID}:${TWILIO_AUTH}"
                         """
                     }
                     
                     echo "✅ WhatsApp message sent!"
-                    echo "⏳ Waiting for your 'YES' reply..."
-                    echo "📱 The build will continue IMMEDIATELY when you reply 'YES'"
+                    echo "⏳ Waiting for your 'YES' reply on WhatsApp..."
+                    echo "📱 The build will ONLY continue when you reply 'YES'"
                     
-                    // Wait for approval signal (check every 5 seconds)
+                    // FIXED: Wait for REAL approval - check every 2 seconds for 10 minutes
                     def approved = false
-                    for(int i = 0; i < 120; i++) { // Wait max 10 minutes
-                        sleep(5)
+                    def maxWaitTime = 600 // 10 minutes in seconds
+                    def checkInterval = 2 // Check every 2 seconds
+                    def totalChecks = maxWaitTime / checkInterval
+                    
+                    for(int i = 0; i < totalChecks; i++) {
+                        sleep(checkInterval * 1000) // Wait 2 seconds
                         approved = fileExists('/tmp/jenkins_approved')
+                        
                         if(approved) {
                             echo "✅ Approval received via WhatsApp! Continuing build..."
                             break
                         }
-                        if(i % 12 == 0) {
-                            def secondsPassed = (i + 1) * 5
-                            echo "⏰ Still waiting for WhatsApp approval... (${secondsPassed} seconds passed)"
+                        
+                        // Log every 30 seconds so you know it's still waiting
+                        if(i % 15 == 0) {
+                            def minutesWaiting = (i * checkInterval) / 60
+                            echo "⏰ Still waiting for WhatsApp approval... (${(i * checkInterval)} seconds elapsed)"
                         }
                     }
                     
                     if(!approved) {
-                        error("❌ No approval received within 10 minutes")
+                        error("❌ No approval received within 10 minutes. Pipeline stopped.")
                     }
                 }
             }
@@ -123,13 +130,11 @@ pipeline {
             steps {
                 script {
                     echo "🔒 Running Trivy Security Scan..."
-                    // FIXED: Use correct Trivy format options
                     sh '''
                         trivy image --format table -o trivy-vote.txt ${IMAGE_VOTE}:${BUILD_NUMBER}
                         trivy image --format table -o trivy-result.txt ${IMAGE_RESULT}:${BUILD_NUMBER}
                         trivy image --format table -o trivy-worker.txt ${IMAGE_WORKER}:${BUILD_NUMBER}
                         
-                        # Generate JSON reports for artifacts
                         trivy image --format json -o trivy-vote.json ${IMAGE_VOTE}:${BUILD_NUMBER}
                         trivy image --format json -o trivy-result.json ${IMAGE_RESULT}:${BUILD_NUMBER}
                         trivy image --format json -o trivy-worker.json ${IMAGE_WORKER}:${BUILD_NUMBER}
@@ -163,7 +168,10 @@ pipeline {
                 script {
                     echo "🚀 Deploying Application..."
                     sh '''
+                        # Stop only voting app containers (preserve SonarQube)
                         docker-compose down || true
+                        
+                        # Deploy with new images
                         IMAGE_VOTE=${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER} \
                         IMAGE_RESULT=${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER} \
                         IMAGE_WORKER=${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER} \
@@ -178,7 +186,7 @@ pipeline {
         always {
             script { 
                 cleanWs() 
-                // Safe cleanup - won't fail if file doesn't exist
+                // Safe cleanup
                 sh "rm -f /tmp/jenkins_approved || true"
             }
             mail(

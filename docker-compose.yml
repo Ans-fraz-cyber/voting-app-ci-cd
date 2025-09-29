@@ -56,48 +56,9 @@ services:
     networks:
       - back-tier
 
-  # SonarQube DB
-  sonarqube_db:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: sonar
-      POSTGRES_PASSWORD: sonar
-      POSTGRES_DB: sonarqube
-    volumes:
-      - sonarqube_db_data:/var/lib/postgresql/data
-    networks:
-      - back-tier
-
-  # SonarQube
-  sonarqube:
-    image: sonarqube:community
-    ports:
-      - "9000:9000"
-    environment:
-      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
-    depends_on:
-      - sonarqube_db
-    networks:
-      - back-tier
-
-  # Jenkins
- # jenkins:
-   # image: jenkins/jenkins:lts
-    #container_name: jenkins
-    #ports:
-     # - "8085:8080"
-      #- "50000:50000"
-   # volumes:
-     # - jenkins_home:/var/jenkins_home
-      #- /var/run/docker.sock:/var/run/docker.sock
-    #networks:
-     # - back-tier
-
 networks:
   front-tier:
   back-tier:
 
 volumes:
   db-data:
-  sonarqube_db_data:
-  jenkins_home:
