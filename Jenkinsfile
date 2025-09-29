@@ -75,6 +75,17 @@ pipeline {
             }
         }
 
+        // 🔒 WhatsApp Approval Stage
+        stage('Approval') {
+            steps {
+                script {
+                    timeout(time: 10, unit: 'MINUTES') {
+                        input message: 'Approve deployment?', ok: 'Proceed'
+                    }
+                }
+            }
+        }
+
         stage('Build Docker Images with BuildKit') {
             steps {
                 echo "🐳 Building Docker images with BuildKit..."
@@ -149,112 +160,12 @@ pipeline {
                                     <meta name="viewport" content="width=device-width, initial-scale=1.0">
                                     <title>🛡️ Security Scan Dashboard - Build ${BUILD_NUMBER}</title>
                                     <style>
-                                        * { margin: 0; padding: 0; box-sizing: border-box; }
-                                        body { 
-                                            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-                                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                                            min-height: 100vh; 
-                                            padding: 20px; 
-                                        }
-                                        .container { 
-                                            max-width: 1400px; 
-                                            margin: 0 auto; 
-                                            background: white; 
-                                            border-radius: 15px; 
-                                            box-shadow: 0 20px 40px rgba(0,0,0,0.1); 
-                                            overflow: hidden; 
-                                        }
-                                        .header { 
-                                            background: linear-gradient(135deg, #2c3e50, #3498db); 
-                                            color: white; 
-                                            padding: 30px; 
-                                            text-align: center; 
-                                        }
-                                        .header h1 { 
-                                            font-size: 2.5em; 
-                                            margin-bottom: 10px; 
-                                        }
-                                        .content { 
-                                            padding: 30px; 
-                                        }
-                                        .status-grid { 
-                                            display: grid; 
-                                            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
-                                            gap: 20px; 
-                                            margin-bottom: 30px; 
-                                        }
-                                        .status-card { 
-                                            background: #f8f9fa; 
-                                            border-radius: 10px; 
-                                            padding: 20px; 
-                                            border-left: 5px solid #3498db; 
-                                            transition: transform 0.3s ease; 
-                                        }
-                                        .status-card:hover { 
-                                            transform: translateY(-5px); 
-                                            box-shadow: 0 10px 20px rgba(0,0,0,0.1); 
-                                        }
-                                        .status-card.success { border-left-color: #27ae60; background: #d5f4e6; }
-                                        .status-card.warning { border-left-color: #f39c12; background: #fef5e7; }
-                                        .status-card.danger { border-left-color: #e74c3c; background: #fdeaea; }
-                                        .card-title { 
-                                            font-size: 1.3em; 
-                                            font-weight: bold; 
-                                            margin-bottom: 10px; 
-                                            color: #2c3e50; 
-                                        }
-                                        .reports-section { 
-                                            background: #f8f9fa; 
-                                            border-radius: 10px; 
-                                            padding: 25px; 
-                                            margin-top: 20px; 
-                                        }
-                                        .reports-title { 
-                                            font-size: 1.5em; 
-                                            color: #2c3e50; 
-                                            margin-bottom: 20px; 
-                                            text-align: center; 
-                                        }
-                                        .report-links { 
-                                            display: grid; 
-                                            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
-                                            gap: 15px; 
-                                        }
-                                        .report-link { 
-                                            display: block; 
-                                            background: white; 
-                                            padding: 20px; 
-                                            border-radius: 8px; 
-                                            text-decoration: none; 
-                                            color: #34495e; 
-                                            border: 2px solid #e9ecef; 
-                                            transition: all 0.3s ease; 
-                                            text-align: center; 
-                                        }
-                                        .report-link:hover { 
-                                            background: #3498db; 
-                                            color: white; 
-                                            border-color: #3498db; 
-                                            transform: scale(1.05); 
-                                        }
-                                        .vulnerability-info {
-                                            background: #fff3cd;
-                                            border: 1px solid #ffeaa7;
-                                            border-radius: 5px;
-                                            padding: 15px;
-                                            margin: 15px 0;
-                                        }
-                                        .footer { 
-                                            text-align: center; 
-                                            padding: 20px; 
-                                            background: #2c3e50; 
-                                            color: white; 
-                                            margin-top: 30px; 
-                                        }
-                                        .severity-critical { color: #e74c3c; font-weight: bold; }
-                                        .severity-high { color: #e67e22; font-weight: bold; }
-                                        .severity-medium { color: #f39c12; font-weight: bold; }
-                                        .severity-low { color: #3498db; font-weight: bold; }
+                                        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; padding: 20px; }
+                                        .container { background: #fff; border-radius: 10px; padding: 20px; max-width: 1200px; margin: auto; }
+                                        .header { background: #2c3e50; color: white; padding: 20px; border-radius: 10px 10px 0 0; }
+                                        .reports { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-top: 20px; }
+                                        .report-link { padding: 15px; border: 1px solid #ccc; border-radius: 8px; text-align: center; background: #f8f9fa; text-decoration: none; color: #2c3e50; }
+                                        .report-link:hover { background: #3498db; color: white; }
                                     </style>
                                 </head>
                                 <body>
@@ -262,79 +173,11 @@ pipeline {
                                         <div class="header">
                                             <h1>🛡️ Security Scan Dashboard</h1>
                                             <p>Build #${BUILD_NUMBER} - Voting App CI/CD Pipeline</p>
-                                            <p>🔧 Built with Docker BuildKit</p>
-                                            <p>Generated on: \$(date)</p>
                                         </div>
-                                        
-                                        <div class="content">
-                                            <div class="status-grid">
-                                                <div class="status-card success">
-                                                    <div class="card-title">✅ SonarQube Analysis</div>
-                                                    <div class="card-value">Code quality scan completed successfully</div>
-                                                </div>
-                                                <div class="status-card success">
-                                                    <div class="card-title">🐳 Docker Images Built</div>
-                                                    <div class="card-value">Built with BuildKit - Tag: ${BUILD_NUMBER}</div>
-                                                </div>
-                                                <div class="status-card success">
-                                                    <div class="card-title">🔒 Security Scans Completed</div>
-                                                    <div class="card-value">Trivy vulnerability analysis finished</div>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="vulnerability-info">
-                                                <h3>📋 How to Read Vulnerability Reports:</h3>
-                                                <p>Click on the report links below to view detailed vulnerability information. Each report includes:</p>
-                                                <ul>
-                                                    <li><span class="severity-critical">CRITICAL</span> - Immediate action required</li>
-                                                    <li><span class="severity-high">HIGH</span> - Address as soon as possible</li>
-                                                    <li><span class="severity-medium">MEDIUM</span> - Consider addressing</li>
-                                                    <li><span class="severity-low">LOW</span> - Low risk, monitor</li>
-                                                </ul>
-                                                <p><strong>Note:</strong> Click on vulnerability IDs in the reports to view detailed descriptions and remediation guidance.</p>
-                                            </div>
-                                            
-                                            <div class="reports-section">
-                                                <h2 class="reports-title">📊 Security Scan Reports</h2>
-                                                <div class="report-links">
-                                                    <a href="trivy-vote.html" class="report-link" target="_blank">
-                                                        <h3>🗳️ Vote Service</h3>
-                                                        <p>Image: ${IMAGE_VOTE}:${BUILD_NUMBER}</p>
-                                                    </a>
-                                                    <a href="trivy-result.html" class="report-link" target="_blank">
-                                                        <h3>📈 Result Service</h3>
-                                                        <p>Image: ${IMAGE_RESULT}:${BUILD_NUMBER}</p>
-                                                    </a>
-                                                    <a href="trivy-worker.html" class="report-link" target="_blank">
-                                                        <h3>⚙️ Worker Service</h3>
-                                                        <p>Image: ${IMAGE_WORKER}:${BUILD_NUMBER}</p>
-                                                    </a>
-                                                </div>
-                                            </div>
-                                            
-                                            <div class="reports-section">
-                                                <h2 class="reports-title">📁 Additional Artifacts</h2>
-                                                <div class="report-links">
-                                                    <a href="trivy-vote.txt" class="report-link" target="_blank">
-                                                        <h3>📄 Vote Text Report</h3>
-                                                        <p>Plain text format</p>
-                                                    </a>
-                                                    <a href="trivy-result.txt" class="report-link" target="_blank">
-                                                        <h3>📄 Result Text Report</h3>
-                                                        <p>Plain text format</p>
-                                                    </a>
-                                                    <a href="trivy-worker.txt" class="report-link" target="_blank">
-                                                        <h3>📄 Worker Text Report</h3>
-                                                        <p>Plain text format</p>
-                                                    </a>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="footer">
-                                            <p>🔧 Built with Docker BuildKit | 🏷️ Image Tag: ${BUILD_NUMBER}</p>
-                                            <p>🔍 For detailed vulnerability analysis and remediation steps, click on the HTML reports above</p>
-                                            <p>🕒 Report generated by Jenkins CI/CD Pipeline</p>
+                                        <div class="reports">
+                                            <a href="trivy-vote.html" class="report-link" target="_blank">🗳️ Vote Report</a>
+                                            <a href="trivy-result.html" class="report-link" target="_blank">📈 Result Report</a>
+                                            <a href="trivy-worker.html" class="report-link" target="_blank">⚙️ Worker Report</a>
                                         </div>
                                     </div>
                                 </body>
@@ -363,10 +206,6 @@ pipeline {
                                     docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
                                     
                                     echo "✅ Images pushed to DockerHub with tag: ${BUILD_NUMBER}"
-                                    echo "📦 Pushed images:"
-                                    echo "   - ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}"
-                                    echo "   - ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}"
-                                    echo "   - ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}"
                                 """
                             }
                         }
@@ -380,11 +219,11 @@ pipeline {
                 echo "🚀 Deploying application..."
                 script {
                     sh '''
-                        # Stop and remove only voting app containers (not SonarQube)
+                        # Stop and remove old containers
                         docker stop voting-app-pipeline-vote-1 voting-app-pipeline-result-1 voting-app-pipeline-worker-1 voting-app-pipeline-redis-1 voting-app-pipeline-db-1 2>/dev/null || true
                         docker rm voting-app-pipeline-vote-1 voting-app-pipeline-result-1 voting-app-pipeline-worker-1 voting-app-pipeline-redis-1 voting-app-pipeline-db-1 2>/dev/null || true
                         
-                        # Create a custom docker-compose without SonarQube
+                        # Create custom docker-compose for deployment
                         cat > docker-compose-deploy.yml << 'DOCKERCOMPOSE'
                         version: "3"
                         services:
@@ -428,25 +267,13 @@ pipeline {
                           back-tier:
                         DOCKERCOMPOSE
 
-                        # Deploy only the voting app using custom compose file
+                        # Deploy only voting app services
                         docker-compose -f docker-compose-deploy.yml up -d
-
-                        # Wait for services to start
                         sleep 20
-
-                        # Check application status
-                        echo "📊 Application Status:"
                         docker-compose -f docker-compose-deploy.yml ps
 
-                        # Display URLs
-                        echo "🌐 Application URLs:"
-                        echo "Vote: http://localhost:5000"
-                        echo "Result: http://localhost:5001"
-
-                        # Test connectivity
-                        echo "🔍 Testing service connectivity..."
-                        curl -f http://localhost:5000 && echo "✅ Vote service is running" || echo "⚠️ Vote service not responding yet"
-                        curl -f http://localhost:5001 && echo "✅ Result service is running" || echo "⚠️ Result service not responding yet"
+                        echo "🌐 Vote: http://localhost:5000"
+                        echo "🌐 Result: http://localhost:5001"
                     '''
                 }
             }
@@ -455,11 +282,8 @@ pipeline {
 
     post {
         always {
-            // Archive artifacts
             archiveArtifacts artifacts: 'trivy-*.html,trivy-*.txt,trivy-*.json,security-dashboard.html', fingerprint: true
-            
             cleanWs()
-            
             mail(
                 to: "ansfarazkp@gmail.com",
                 subject: "Build ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
@@ -469,37 +293,16 @@ pipeline {
                 Project: ${env.JOB_NAME}
                 Build Number (Image Tag): #${env.BUILD_NUMBER}
                 URL: ${env.BUILD_URL}
-                
-                🔧 Built with Docker BuildKit
-                📦 Images tagged with: ${env.BUILD_NUMBER}
-                
-                Security reports are available in the build artifacts.
-                ${currentBuild.currentResult == 'SUCCESS' ? 'Application deployed successfully!' : 'Build completed with warnings.'}
-                
-                Application URLs:
-                - Vote: http://localhost:5000
-                - Result: http://localhost:5001
                 """
             )
         }
         
         success {
             echo "🎉 Pipeline executed successfully!"
-            echo "🔧 Built with Docker BuildKit"
-            echo "🏷️ All images tagged with: ${BUILD_NUMBER}"
-            echo "🌐 Application deployed at:"
-            echo "   Vote: http://localhost:5000"
-            echo "   Result: http://localhost:5001"
-            echo "📊 Security Dashboard and reports available in build artifacts"
         }
         
         failure {
             echo "❌ Pipeline failed!"
-            echo "🔍 Troubleshooting steps:"
-            echo "   1. Check Docker containers: docker ps -a"
-            echo "   2. Check Docker logs: docker-compose -f docker-compose-deploy.yml logs"
-            echo "   3. Check port conflicts: netstat -tulpn | grep 5000"
-            echo "   4. Check Trivy scan results in artifacts"
         }
     }
 }
