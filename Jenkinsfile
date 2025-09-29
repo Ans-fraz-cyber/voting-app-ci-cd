@@ -4,27 +4,33 @@ pipeline {
     options {
         skipDefaultCheckout(true)
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 15, unit: 'MINUTES')
+        timeout(time: 30, unit: 'MINUTES')
     }
 
     environment {
         SONARQUBE = 'SonarQubeServer'
         SONAR_AUTH_TOKEN = credentials('sonar-token')
+
         IMAGE_VOTE = "voting-app-vote"
-        IMAGE_RESULT = "voting-app-result" 
+        IMAGE_RESULT = "voting-app-result"
         IMAGE_WORKER = "voting-app-worker"
         DOCKERHUB_NAMESPACE = "31793179"
-        // BuildKit
+
+        // BuildKit for Docker
         DOCKER_BUILDKIT = "1"
         COMPOSE_DOCKER_CLI_BUILD = "1"
         BUILDKIT_PROGRESS = "plain"
+
+        // Twilio Sandbox credentials
         TWILIO_SID = credentials('twilio-sid')
         TWILIO_AUTH = credentials('twilio-auth')
         TWILIO_FROM = "whatsapp:+14155238886"   // Twilio Sandbox number
         MY_WHATSAPP = "whatsapp:+92XXXXXXXXXX"  // Replace with your WhatsApp number
+
+        // Jenkins details
         JENKINS_USER = "Ans Faraz"
         JENKINS_TOKEN = "111fc77cf1e14c6109c62442667f178d64"
-        JENKINS_URL = "https://0640f2ef4501.ngrok-free.app"   // ngrok URL for Jenkins
+        JENKINS_URL = "https://65d1b1133b29.ngrok-free.app"  // Your ngrok URL for Jenkins
         JOB_NAME = "voting-app-pipeline"
     }
 
@@ -75,11 +81,11 @@ pipeline {
             }
         }
 
-        // 🔔 WhatsApp Approval Stage
+        // WhatsApp Approval
         stage('Approval') {
             steps {
                 script {
-                    // 1️⃣ Send WhatsApp message via Twilio
+                    // Send WhatsApp approval request
                     echo "📲 Sending WhatsApp approval request..."
                     sh """
                         curl -X POST https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json \\
@@ -89,7 +95,7 @@ pipeline {
                         -u "${TWILIO_SID}:${TWILIO_AUTH}"
                     """
 
-                    // 2️⃣ Pause pipeline until Flask webhook triggers input
+                    // Wait for user input via Jenkins (Flask webhook triggers this)
                     timeout(time: 10, unit: 'MINUTES') {
                         input message: 'Approve deployment? (Check WhatsApp!)', ok: 'Proceed'
                     }
@@ -97,7 +103,7 @@ pipeline {
             }
         }
 
-        stage('Build Docker Images with BuildKit') {
+        stage('Build Docker Images') {
             steps {
                 echo "🐳 Building Docker images..."
                 sh '''
@@ -127,17 +133,18 @@ pipeline {
 
                 stage('Push to DockerHub') {
                     steps {
-                        echo "📤 Pushing images..."
-                        docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
-                            sh '''
-                                docker tag ${IMAGE_VOTE}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
-                                docker tag ${IMAGE_RESULT}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
-                                docker tag ${IMAGE_WORKER}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
+                        script {
+                            docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
+                                sh """
+                                    docker tag ${IMAGE_VOTE}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
+                                    docker tag ${IMAGE_RESULT}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
+                                    docker tag ${IMAGE_WORKER}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
 
-                                docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
-                                docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
-                                docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
-                            '''
+                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-vote:${BUILD_NUMBER}
+                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-result:${BUILD_NUMBER}
+                                    docker push ${DOCKERHUB_NAMESPACE}/voting-app-worker:${BUILD_NUMBER}
+                                """
+                            }
                         }
                     }
                 }
@@ -163,6 +170,14 @@ pipeline {
                 subject: "Build ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                 body: "Build ${currentBuild.currentResult}! URL: ${env.BUILD_URL}"
             )
+        }
+
+        success {
+            echo "🎉 Pipeline executed successfully!"
+        }
+
+        failure {
+            echo "❌ Pipeline failed!"
         }
     }
 }
