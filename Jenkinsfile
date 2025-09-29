@@ -4,7 +4,7 @@ pipeline {
     options {
         skipDefaultCheckout(true)
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 30, unit: 'MINUTES')  // Total pipeline timeout
+        timeout(time: 60, unit: 'MINUTES')  // Total pipeline timeout
     }
 
     environment {
@@ -17,8 +17,8 @@ pipeline {
         COMPOSE_DOCKER_CLI_BUILD = "1"
         BUILDKIT_PROGRESS = "plain"
         TWILIO_FROM = "whatsapp:+14155238886"
-        MY_WHATSAPP = "whatsapp:+92XXXXXXXXXX"
-        JENKINS_URL = "https://65d1b1133b29.ngrok-free.app"
+        MY_WHATSAPP = "whatsapp:+92XXXXXXXXXX" // replace with your WhatsApp number
+        JENKINS_URL = "http://localhost:8080"   // your Jenkins URL
         JOB_NAME = "voting-app-pipeline"
     }
 
@@ -57,7 +57,7 @@ pipeline {
             }
         }
 
-        stage('Smart Quality Gate') {
+        stage('Wait for Quality Gate') {
             steps {
                 script {
                     echo "⏳ Waiting for SonarQube Quality Gate..."
