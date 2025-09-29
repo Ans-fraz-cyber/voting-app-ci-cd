@@ -61,13 +61,6 @@ pipeline {
                 script {
                     echo "📲 Sending WhatsApp approval request..."
                     
-                    // Clean previous approval files
-                    sh '''
-                        rm -f approved.txt || true
-                        rm -f /tmp/jenkins_approved || true
-                        echo "✅ Cleaned previous approval files"
-                    '''
-                    
                     // Send WhatsApp message
                     withCredentials([
                         string(credentialsId: 'twilio-sid', variable: 'TWILIO_SID'),
@@ -77,48 +70,27 @@ pipeline {
                         curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json" \\
                         --data-urlencode "From=${TWILIO_FROM}" \\
                         --data-urlencode "To=${MY_WHATSAPP}" \\
-                        --data-urlencode "Body=🚦 BUILD Approval Needed! SonarQube completed. Reply YES to start building. Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}" \\
+                        --data-urlencode "Body=🚦 BUILD Approval Needed! SonarQube completed. Reply YES on WhatsApp, then click PROCEED below. Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}" \\
                         -u "${TWILIO_SID}:${TWILIO_AUTH}"
                         """
                     }
                     
                     echo "✅ WhatsApp message sent!"
-                    echo "⏳ Waiting for your 'YES' reply on WhatsApp..."
-                    echo "📱 The build will ONLY continue when you reply 'YES'"
+                    echo "📱 Please reply YES on WhatsApp, then click PROCEED below to continue"
                     
-                    // Wait for approval - check every 5 seconds
-                    def approved = false
-                    def waitCount = 0
-                    def maxWait = 120 // 10 minutes (120 * 5 seconds)
-                    
-                    while (waitCount < maxWait && !approved) {
-                        sleep(5000) // Wait 5 seconds
-                        waitCount++
-                        
-                        // Check multiple possible file locations
-                        approved = fileExists('approved.txt') || fileExists('/tmp/jenkins_approved')
-                        
-                        if (approved) {
-                            echo "🎉 ✅ Approval received via WhatsApp! Continuing build..."
-                            sh "cat approved.txt || true" // Debug: show file content
-                            break
-                        }
-                        
-                        // Log every 30 seconds
-                        if (waitCount % 6 == 0) {
-                            def minutes = (waitCount * 5) / 60
-                            echo "⏰ Still waiting for WhatsApp approval... (${waitCount * 5} seconds elapsed)"
-                        }
+                    // SIMPLE RELIABLE INPUT - This works 100%
+                    timeout(time: 10, unit: 'MINUTES') {
+                        input(
+                            message: '✅ Did you reply YES on WhatsApp? Click PROCEED to continue building.',
+                            ok: 'PROCEED'
+                        )
                     }
                     
-                    if (!approved) {
-                        error("❌ No approval received within 10 minutes. Pipeline stopped.")
-                    }
+                    echo "🎉 Build approved! Continuing..."
                 }
             }
         }
 
-        // REST OF YOUR STAGES REMAIN THE SAME
         stage('Build Docker Images') {
             steps {
                 script {
@@ -189,10 +161,7 @@ pipeline {
 
     post {
         always {
-            script { 
-                cleanWs() 
-                sh "rm -f approved.txt || true"
-            }
+            cleanWs()
             mail(
                 to: "ansfarazkp@gmail.com",
                 subject: "Build ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
