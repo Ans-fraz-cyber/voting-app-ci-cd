@@ -1,10 +1,6 @@
 pipeline {
     agent any
 
-    parameters {
-        booleanParam(name: 'APPROVED', defaultValue: false, description: 'Approved via WhatsApp')
-    }
-
     options {
         skipDefaultCheckout(true)
         buildDiscarder(logRotator(numToKeepStr: '10'))
@@ -27,9 +23,6 @@ pipeline {
 
     stages {
         stage('Download Code') {
-            when {
-                expression { params.APPROVED == false }
-            }
             steps {
                 echo "📥 Downloading repository..."
                 sh '''
@@ -44,9 +37,6 @@ pipeline {
         }
 
         stage('SonarQube Analysis') {
-            when {
-                expression { params.APPROVED == false }
-            }
             steps {
                 echo "🔍 Running SonarQube Analysis..."
                 withSonarQubeEnv("${SONARQUBE}") {
@@ -66,14 +56,15 @@ pipeline {
             }
         }
 
-        stage('Send WhatsApp Approval Request') {
-            when {
-                expression { params.APPROVED == false }
-            }
+        stage('Wait for WhatsApp Approval') {
             steps {
                 script {
                     echo "📲 Sending WhatsApp approval request..."
                     
+                    // Clean previous approval signal
+                    sh "rm -f /tmp/jenkins_approved"
+                    
+                    // Send WhatsApp message
                     withCredentials([
                         string(credentialsId: 'twilio-sid', variable: 'TWILIO_SID'),
                         string(credentialsId: 'twilio-auth', variable: 'TWILIO_AUTH')
@@ -89,22 +80,33 @@ pipeline {
                     
                     echo "✅ WhatsApp message sent!"
                     echo "⏳ Waiting for your 'YES' reply..."
-                    echo "📱 The build will start IMMEDIATELY when you reply 'YES'"
+                    echo "📱 The build will continue IMMEDIATELY when you reply 'YES'"
                     
-                    // Wait for approval (this build will stop here, new build will start)
-                    sleep time: 300, unit: 'SECONDS'
-                    error("❌ No approval received within 5 minutes")
+                    // Wait for approval signal (check every 5 seconds)
+                    def approved = false
+                    for(int i = 0; i < 120; i++) { // Wait max 10 minutes
+                        sleep(5)
+                        approved = fileExists('/tmp/jenkins_approved')
+                        if(approved) {
+                            echo "✅ Approval received via WhatsApp! Continuing build..."
+                            break
+                        }
+                        if(i % 12 == 0) { // Log every minute
+                            echo "⏰ Still waiting for WhatsApp approval... ($((i+1)*5) seconds passed)"
+                        }
+                    }
+                    
+                    if(!approved) {
+                        error("❌ No approval received within 10 minutes")
+                    }
                 }
             }
         }
 
         stage('Build Docker Images') {
-            when {
-                expression { params.APPROVED == true }
-            }
             steps {
                 script {
-                    echo "🏗️ Building Docker images (Approved via WhatsApp)..."
+                    echo "🏗️ Building Docker images..."
                     sh '''
                         export DOCKER_BUILDKIT=1
                         export BUILDKIT_PROGRESS=plain
@@ -117,9 +119,6 @@ pipeline {
         }
 
         stage('Trivy Security Scan') {
-            when {
-                expression { params.APPROVED == true }
-            }
             steps {
                 script {
                     sh '''
@@ -133,9 +132,6 @@ pipeline {
         }
 
         stage('Push Docker Images') {
-            when {
-                expression { params.APPROVED == true }
-            }
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
@@ -154,9 +150,6 @@ pipeline {
         }
 
         stage('Deploy Application') {
-            when {
-                expression { params.APPROVED == true }
-            }
             steps {
                 script {
                     sh '''
@@ -170,7 +163,11 @@ pipeline {
 
     post {
         always {
-            script { cleanWs() }
+            script { 
+                cleanWs() 
+                // Clean up approval signal
+                sh "rm -f /tmp/jenkins_approved"
+            }
             mail(
                 to: "ansfarazkp@gmail.com",
                 subject: "Build ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
