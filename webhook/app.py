@@ -1,33 +1,40 @@
 from flask import Flask, request
 import requests
+import os
 
 app = Flask(__name__)
 
-# Jenkins details
-JENKINS_URL = "https://0640f2ef4501.ngrok-free.app"   # ngrok URL for Jenkins (port 8080)
-JOB_NAME = "voting-app-pipeline"                      # Jenkins job name
-USERNAME = "Ans Faraz"                                # your Jenkins username
-API_TOKEN = "111fc77cf1e14c6109c62442667f178d64"      # Jenkins API token
-
-@app.route("/whatsapp", methods=['POST'])
+@app.route("/webhook", methods=['POST'])
 def whatsapp_reply():
     incoming_msg = request.form.get('Body', '').strip().lower()
-
+    
+    print(f"📱 Received message: {incoming_msg}")
+    
     if "yes" in incoming_msg:
-        requests.post(
-            f"{JENKINS_URL}/job/{JOB_NAME}/input/Proceed/proceedEmpty",
-            auth=(USERNAME, API_TOKEN)
-        )
-        return "Approved ✅", 200
-
+        print("✅ YES received - Triggering new build immediately!")
+        
+        try:
+            # Trigger a NEW build immediately (this will skip the wait)
+            os.system("curl -s -X POST http://localhost:8080/job/voting-app-pipeline/buildWithParameters?APPROVED=true --user 'Ans Faraz:111fc77cf1e14c6109c62442667f178d64' &")
+            print("🚀 Triggered new build with approval!")
+            
+        except Exception as e:
+            print(f"❌ Error: {e}")
+        
+        return '''<Response>
+            <Message>✅ Build approved! Starting new build immediately...</Message>
+        </Response>'''
+    
     elif "no" in incoming_msg:
-        requests.post(
-            f"{JENKINS_URL}/job/{JOB_NAME}/input/Proceed/abort",
-            auth=(USERNAME, API_TOKEN)
-        )
-        return "Rejected ❌", 200
-
-    return "Reply YES or NO", 200
+        print("❌ NO received - Build rejected")
+        return '''<Response>
+            <Message>❌ Build cancelled!</Message>
+        </Response>'''
+    
+    return '''<Response>
+        <Message>Please reply YES to approve or NO to cancel</Message>
+    </Response>'''
 
 if __name__ == "__main__":
+    print("🚀 Starting WhatsApp webhook server...")
     app.run(host="0.0.0.0", port=5000, debug=True)

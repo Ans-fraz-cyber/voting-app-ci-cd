@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    parameters {
+        booleanParam(name: 'APPROVED', defaultValue: false, description: 'Approved via WhatsApp')
+    }
+
     options {
         skipDefaultCheckout(true)
         buildDiscarder(logRotator(numToKeepStr: '10'))
@@ -23,6 +27,9 @@ pipeline {
 
     stages {
         stage('Download Code') {
+            when {
+                expression { params.APPROVED == false }
+            }
             steps {
                 echo "📥 Downloading repository..."
                 sh '''
@@ -37,6 +44,9 @@ pipeline {
         }
 
         stage('SonarQube Analysis') {
+            when {
+                expression { params.APPROVED == false }
+            }
             steps {
                 echo "🔍 Running SonarQube Analysis..."
                 withSonarQubeEnv("${SONARQUBE}") {
@@ -56,12 +66,14 @@ pipeline {
             }
         }
 
-        stage('Wait for WhatsApp Approval') {
+        stage('Send WhatsApp Approval Request') {
+            when {
+                expression { params.APPROVED == false }
+            }
             steps {
                 script {
                     echo "📲 Sending WhatsApp approval request..."
                     
-                    // Send WhatsApp message
                     withCredentials([
                         string(credentialsId: 'twilio-sid', variable: 'TWILIO_SID'),
                         string(credentialsId: 'twilio-auth', variable: 'TWILIO_AUTH')
@@ -70,28 +82,29 @@ pipeline {
                         curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json" \\
                         --data-urlencode "From=${TWILIO_FROM}" \\
                         --data-urlencode "To=${MY_WHATSAPP}" \\
-                        --data-urlencode "Body=🚦 BUILD Approval Needed! SonarQube completed. Reply YES to start building automatically. Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}" \\
+                        --data-urlencode "Body=🚦 BUILD Approval Needed! SonarQube completed. Reply YES to start building IMMEDIATELY. Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}" \\
                         -u "${TWILIO_SID}:${TWILIO_AUTH}"
                         """
                     }
                     
                     echo "✅ WhatsApp message sent!"
-                    echo "⏳ Waiting for your 'YES' reply on WhatsApp..."
-                    echo "📱 The build will start AUTOMATICALLY when you reply 'YES'"
+                    echo "⏳ Waiting for your 'YES' reply..."
+                    echo "📱 The build will start IMMEDIATELY when you reply 'YES'"
                     
-                    // Wait for webhook to receive YES response (no manual input)
-                    // The webhook will trigger the build to continue automatically
-                    sleep time: 300, unit: 'SECONDS' // Wait 5 minutes for response
-                    
-                    echo "✅ Continuing build after WhatsApp approval..."
+                    // Wait for approval (this build will stop here, new build will start)
+                    sleep time: 300, unit: 'SECONDS'
+                    error("❌ No approval received within 5 minutes")
                 }
             }
         }
 
         stage('Build Docker Images') {
+            when {
+                expression { params.APPROVED == true }
+            }
             steps {
                 script {
-                    echo "🏗️ Building Docker images..."
+                    echo "🏗️ Building Docker images (Approved via WhatsApp)..."
                     sh '''
                         export DOCKER_BUILDKIT=1
                         export BUILDKIT_PROGRESS=plain
@@ -104,6 +117,9 @@ pipeline {
         }
 
         stage('Trivy Security Scan') {
+            when {
+                expression { params.APPROVED == true }
+            }
             steps {
                 script {
                     sh '''
@@ -117,6 +133,9 @@ pipeline {
         }
 
         stage('Push Docker Images') {
+            when {
+                expression { params.APPROVED == true }
+            }
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
@@ -135,6 +154,9 @@ pipeline {
         }
 
         stage('Deploy Application') {
+            when {
+                expression { params.APPROVED == true }
+            }
             steps {
                 script {
                     sh '''
