@@ -7,30 +7,20 @@ pipeline {
         IMAGE_RESULT = "ansfraz/voting-app-result"
         IMAGE_WORKER = "ansfraz/voting-app-worker"
         DOCKER_BUILDKIT = "1" 
-        SONAR_URL = "http://localhost:9000"
+        SONAR_URL = "http://localhost:9000/dashboard?id=voting-app"
         MAIL_FOR_APPROVAL = "ansfaraz.cyber@gmail.com"
         MAIL_FOR_FAIL_OR_SUCCESSFULL = "ansfaraz.cyber@gmail.com"
     }
     stages {
         stage('Checkout') {  
             steps {
-                script {
-                    echo '📥 Downloading voting-app repository...'
-                    sh '''
-                        # Configure git to avoid HTTP/2 issues
-                        git config --global http.version HTTP/1.1
-                        git config --global http.postBuffer 1048576000
-                        git config --global core.compression 0
-                    '''
-                    git branch: "${GIT_BRANCH}", url: "${GIT_URL}"
-                }
+                git branch: "${GIT_BRANCH}", url: "${GIT_URL}"
             }
         }
 
         stage('SonarQube Quality Analysis') {
             steps {
                 script {
-                    // Option 1: Use direct sonar-scanner (if installed on system)
                     withSonarQubeEnv('Sonar') {
                         sh '''
                             sonar-scanner \
@@ -38,14 +28,9 @@ pipeline {
                             -Dsonar.projectKey=voting-app \
                             -Dsonar.sources=. \
                             -Dsonar.host.url=http://localhost:9000 \
-                            -Dsonar.login=admin \
-                            -Dsonar.password=admin \
                             -Dsonar.exclusions=**/trivy-*.html,**/*.html
                         '''
                     }
-                    
-                    // If the above doesn't work, try this alternative:
-                    // sh 'mvn sonar:sonar -Dsonar.projectKey=voting-app -Dsonar.host.url=http://localhost:9000 -Dsonar.login=admin -Dsonar.password=admin'
                 }
             }
         }
@@ -54,6 +39,38 @@ pipeline {
             steps {
                 timeout(time: 10, unit: "MINUTES") {
                     waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        // ✅ APPROVAL STAGE AFTER QUALITY GATE
+        stage('Approval Required - After Quality Check') {
+            steps {
+                script {
+                    mail(
+                        to: "${MAIL_FOR_APPROVAL}",
+                        subject: "APPROVAL REQUIRED - Quality Gate Passed - Build #${BUILD_NUMBER}",
+                        body: """
+Hello Team,
+
+✅ SonarQube Quality Gate has PASSED!
+
+Build Number: ${BUILD_NUMBER}
+Quality Report: ${SONAR_URL}
+
+The code has passed all quality checks and is ready for deployment approval.
+
+Please go to Jenkins and approve the deployment to continue.
+
+Best regards,
+Jenkins
+"""
+                    )
+                    input(
+                        message: '✅ Quality Gate PASSED! Approve deployment to production?', 
+                        ok: 'DEPLOY NOW',
+                        submitterParameter: 'APPROVED_BY'
+                    )
                 }
             }
         }
@@ -88,7 +105,7 @@ pipeline {
                 stage('Docker Push') {
                     steps {
                         script {
-                            withDockerRegistry(credentialsId: 'your-docker-credentials') {
+                            withDockerRegistry(credentialsId: 'dockerhub-credentials') {
                                 sh """
                                     docker push ${IMAGE_VOTE}:${BUILD_NUMBER}
                                     docker push ${IMAGE_RESULT}:${BUILD_NUMBER}
@@ -97,19 +114,6 @@ pipeline {
                             }
                         }
                     }
-                }
-            }
-        }
-
-        stage('Approval Required') {
-            steps {
-                script {
-                    mail(
-                        to: "${MAIL_FOR_APPROVAL}",
-                        subject: "Approval Required for Deployment",
-                        body: "Pipeline is waiting for your approval. Please go to Jenkins and click Deploy to continue."
-                    )
-                    input message: 'Do you approve deployment to production?', ok: 'Deploy'
                 }
             }
         }
@@ -127,13 +131,14 @@ pipeline {
                 echo "✅ Deployment successful!"
                 mail(
                     to: "${MAIL_FOR_FAIL_OR_SUCCESSFULL}",
-                    subject: "Build #${BUILD_NUMBER} Successful - ${env.JOB_NAME}",
+                    subject: "🚀 DEPLOYMENT SUCCESSFUL - Build #${BUILD_NUMBER}",
                     body: """ 
 Hello Team,
 
-Pipeline has successfully completed!
+🎉 Pipeline has successfully completed!
 
 Build Number: ${BUILD_NUMBER}
+Approved By: ${env.APPROVED_BY}
 
 Security & Quality Reports:
 - SonarQube: ${SONAR_URL}
@@ -157,11 +162,11 @@ Jenkins
                 echo "❌ Deployment failed!"
                 mail(
                     to: "${MAIL_FOR_FAIL_OR_SUCCESSFULL}",
-                    subject: "Build #${BUILD_NUMBER} Failed - ${env.JOB_NAME}",
+                    subject: "🚨 DEPLOYMENT FAILED - Build #${BUILD_NUMBER}",
                     body: """ 
 Hello Team,
 
-Pipeline has failed.
+❌ Pipeline has failed!
 
 Build Number: ${BUILD_NUMBER}
 
