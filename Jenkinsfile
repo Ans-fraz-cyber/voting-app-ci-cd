@@ -11,30 +11,28 @@ pipeline {
         MAIL_FOR_APPROVAL = "ansfaraz.cyber@gmail.com"
         MAIL_FOR_FAIL_OR_SUCCESSFULL = "ansfaraz.cyber@gmail.com"
     }
+    
     stages {
+        // STAGE 1: Checkout
         stage('Checkout') {  
             steps {
-                git branch: "${GIT_BRANCH}", url: "${GIT_URL}"
+                git branch: "${GIT_BRANCH}", url: "${GIT_URL}", credentialsId: 'github-token'
             }
         }
 
+        // STAGE 2: SonarQube Quality Analysis
         stage('SonarQube Quality Analysis') {
             steps {
                 script {
-                    withSonarQubeEnv('Sonar') {
-                        sh '''
-                            sonar-scanner \
-                            -Dsonar.projectName=voting-app \
-                            -Dsonar.projectKey=voting-app \
-                            -Dsonar.sources=. \
-                            -Dsonar.host.url=http://localhost:9000 \
-                            -Dsonar.exclusions=**/trivy-*.html,**/*.html
-                        '''
+                    def SONAR_HOME = tool "Sonar"
+                    withSonarQubeEnv("Sonar") {
+                        sh "$SONAR_HOME/bin/sonar-scanner -Dsonar.projectName=voting-app -Dsonar.projectKey=voting-app -Dsonar.exclusions=**/trivy-*.html,**/*.html"
                     }
                 }
             }
         }
 
+        // STAGE 3: Sonar Quality Gate Scan
         stage('Sonar Quality Gate Scan') {
             steps {
                 timeout(time: 10, unit: "MINUTES") {
@@ -43,38 +41,7 @@ pipeline {
             }
         }
 
-        // ✅ APPROVAL STAGE AFTER QUALITY GATE
-        stage('Approval Required - After Quality Check') {
-            steps {
-                script {
-                    mail(
-                        to: "${MAIL_FOR_APPROVAL}",
-                        subject: "APPROVAL REQUIRED - Quality Gate Passed - Build #${BUILD_NUMBER}",
-                        body: """
-Hello Team,
-
-✅ SonarQube Quality Gate has PASSED!
-
-Build Number: ${BUILD_NUMBER}
-Quality Report: ${SONAR_URL}
-
-The code has passed all quality checks and is ready for deployment approval.
-
-Please go to Jenkins and approve the deployment to continue.
-
-Best regards,
-Jenkins
-"""
-                    )
-                    input(
-                        message: '✅ Quality Gate PASSED! Approve deployment to production?', 
-                        ok: 'DEPLOY NOW',
-                        submitterParameter: 'APPROVED_BY'
-                    )
-                }
-            }
-        }
-
+        // STAGE 4: Docker Build
         stage('Docker Build') {
             steps {
                 script {
@@ -87,8 +54,10 @@ Jenkins
             }
         }
 
-        stage('Scan and Push images') {
+        // STAGE 5: Scan and Push Images (Parallel)
+        stage('Scan and Push Images') {
             parallel {
+                // SUB-STAGE 5.1: Trivy Image Scan
                 stage('Trivy Image Scan') {
                     steps {
                         script {
@@ -102,6 +71,7 @@ Jenkins
                     }
                 }
 
+                // SUB-STAGE 5.2: Docker Push
                 stage('Docker Push') {
                     steps {
                         script {
@@ -118,6 +88,21 @@ Jenkins
             }
         }
 
+        // STAGE 6: Approval Required
+        stage('Approval Required') {
+            steps {
+                script {
+                    mail(
+                        to: "${MAIL_FOR_APPROVAL}",
+                        subject: "Approval Required for Deployment - Build #${BUILD_NUMBER}",
+                        body: "SonarQube quality checks passed! Pipeline is waiting for your approval. Please go to Jenkins and click Deploy to continue."
+                    )
+                    input message: 'SonarQube Quality Gate PASSED! Approve deployment to production?', ok: 'Deploy'
+                }
+            }
+        }
+
+        // STAGE 7: Deploy using Docker compose
         stage('Deploy using Docker compose') {
             steps {
                 sh "docker compose -f docker-compose.yml up -d"
@@ -138,15 +123,14 @@ Hello Team,
 🎉 Pipeline has successfully completed!
 
 Build Number: ${BUILD_NUMBER}
-Approved By: ${env.APPROVED_BY}
 
-Security & Quality Reports:
+🔍 Security & Quality Reports:
 - SonarQube: ${SONAR_URL}
 - Trivy Vote Report: ${env.BUILD_URL}artifact/trivy-vote-report.html
 - Trivy Result Report: ${env.BUILD_URL}artifact/trivy-result-report.html
 - Trivy Worker Report: ${env.BUILD_URL}artifact/trivy-worker-report.html
 
-Application Links:
+🌐 Application Links:
 - Vote App: http://localhost:5000
 - Result App: http://localhost:5001
 
