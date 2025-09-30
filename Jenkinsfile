@@ -26,7 +26,7 @@ pipeline {
                 echo "📥 Downloading repository..."
                 sh '''
                     rm -rf * .* 2>/dev/null || true
-                    curl -L -o repo.zip "https://github.com/Ans-fraz-cyber/voting-app-ci-cd-archive/main.zip"
+                    curl -L -o repo.zip "https://github.com/Ans-fraz-cyber/voting-app-ci-cd/archive/main.zip"
                     unzip -q repo.zip
                     mv voting-app-ci-cd-main/* . 2>/dev/null || true
                     mv voting-app-ci-cd-main/.* . 2>/dev/null || true
