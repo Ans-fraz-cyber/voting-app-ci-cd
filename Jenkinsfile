@@ -1,322 +1,172 @@
-// =============================================
-// DYNAMIC JENKINSFILE - REUSABLE FOR ANY PROJECT
-// =============================================
-
-// Configuration Map - Update these for each project
-def projectConfig = [
-    projectName: "voting-app",
-    sonarProjectKey: "voting-app", 
-    sonarProjectName: "voting-app",
-    sourceDirs: "vote,result,worker",  // Comma-separated source directories
-    dockerImages: [
-        [name: "vote", context: "./vote"],
-        [name: "result", context: "./result"], 
-        [name: "worker", context: "./worker"]
-    ],
-    dockerhubNamespace: "31793179",
-    notificationEmail: "ansfaraz.cyber@gmail.com",
-    gitRepo: "https://github.com/Ans-fraz-cyber/voting-app-ci-cd.git",
-    timeoutMinutes: 30,
-    approvalTimeoutMinutes: 30
-]
-
 pipeline {
     agent any
-
-    options {
-        skipDefaultCheckout(true)
-        buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: projectConfig.timeoutMinutes, unit: 'MINUTES')
-    }
-
     environment {
-        // Auto-generated environment variables
-        PROJECT_NAME = "${projectConfig.projectName}"
-        SONAR_PROJECT_KEY = "${projectConfig.sonarProjectKey}"
-        SONAR_PROJECT_NAME = "${projectConfig.sonarProjectName}" 
-        SOURCE_DIRS = "${projectConfig.sourceDirs}"
-        DOCKERHUB_NAMESPACE = "${projectConfig.dockerhubNamespace}"
-        NOTIFICATION_EMAIL = "${projectConfig.notificationEmail}"
-        APPROVAL_FILE = "/tmp/build_${PROJECT_NAME}_${BUILD_NUMBER}_approved"
-    }
+        GIT_URL = "https://github.com/Ans-fraz-cyber/voting-app-ci-cd.git"
+        GIT_BRANCH = "main"
+        IMAGE_VOTE = "ansfraz/voting-app-vote"
+        IMAGE_RESULT = "ansfraz/voting-app-result"
+        IMAGE_WORKER = "ansfraz/voting-app-worker"
+        DOCKER_BUILDKIT = "1" 
+        SONAR_URL = "http://localhost:9000/dashboard?id=voting-app"
+        MAIL_FOR_APPROVAL = "ansfaraz.cyber@gmail.com"
+        MAIL_FOR_FAIL_OR_SUCCESSFULL = "ansfaraz.cyber@gmail.com"
 
+    }
     stages {
-        // STAGE 1: Dynamic Code Download
-        stage('Download Code') {
+        stage('Checkout') {  
             steps {
                 script {
-                    echo "📥 Downloading ${PROJECT_NAME} repository..."
-                    dynamicDownloadCode(projectConfig.gitRepo)
+                    echo '📥 Downloading voting-app repository...'
+                    sh '''
+                        # Configure git to avoid HTTP/2 issues
+                        git config --global http.version HTTP/1.1
+                        git config --global http.postBuffer 1048576000
+                        git config --global core.compression 0
+                    '''
+                    git branch: "${GIT_BRANCH}", url: "${GIT_URL}"
                 }
             }
         }
 
-        // STAGE 2: SonarQube Analysis (Conditional)
-        stage('Code Quality Analysis') {
-            when {
-                expression { return fileExists('sonar-project.properties') || params.ENABLE_SONARQUBE }
-            }
+        stage('SonarQube Quality Analysis') {
             steps {
                 script {
-                    echo "🔍 Running SonarQube Analysis..."
-                    runSonarQubeAnalysis()
-                }
-            }
-        }
-
-        // STAGE 3: Quality Gate Check (Conditional)  
-        stage('Quality Gate Check') {
-            when {
-                expression { return fileExists('sonar-project.properties') || params.ENABLE_SONARQUBE }
-            }
-            steps {
-                script {
-                    echo "✅ Checking Quality Gate..."
-                    checkQualityGate()
-                }
-            }
-        }
-
-        // STAGE 4: Approval Workflow
-        stage('Manual Approval') {
-            steps {
-                script {
-                    sendApprovalRequest()
-                    waitForManualApproval()
-                }
-            }
-        }
-
-        // STAGE 5: Dynamic Docker Build
-        stage('Build Docker Images') {
-            steps {
-                script {
-                    echo "🏗️ Building Docker Images..."
-                    projectConfig.dockerImages.each { image ->
-                        buildDockerImage(image.name, image.context)
+                    def SONAR_HOME = tool "Sonar"
+                    withSonarQubeEnv("Sonar") {
+                        sh "$SONAR_HOME/bin/sonar-scanner -Dsonar.projectName=voting-app -Dsonar.projectKey=voting-app -Dsonar.exclusions=**/trivy-*.html,**/*.html"
                     }
                 }
             }
         }
 
-        // STAGE 6: Security Scan
-        stage('Security Scan') {
+        stage('Sonar Quality Gate Scan') {
+            steps {
+                timeout(time:10, unit:"MINUTES"){
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('Docker Build') {
             steps {
                 script {
-                    echo "🔒 Running Security Scans..."
-                    projectConfig.dockerImages.each { image ->
-                        runSecurityScan(image.name)
+                    sh """
+                        docker build -t ${IMAGE_VOTE}:${BUILD_NUMBER} ./vote
+                        docker build -t ${IMAGE_RESULT}:${BUILD_NUMBER} ./result
+                        docker build -t ${IMAGE_WORKER}:${BUILD_NUMBER} ./worker
+                    """
+                }
+            }
+        }
+
+        stage('Scan and Push images') {
+            parallel {
+                stage('Trivy Image Scan') {
+                    steps {
+                        script {
+                            // Trivy images scan
+                            sh """
+                                trivy image --format template --template @trivy-template.html -o trivy-vote-report.html ${IMAGE_VOTE}:${BUILD_NUMBER} || true
+                                trivy image --format template --template @trivy-template.html -o trivy-result-report.html ${IMAGE_RESULT}:${BUILD_NUMBER} || true
+                                trivy image --format template --template @trivy-template.html -o trivy-worker-report.html ${IMAGE_WORKER}:${BUILD_NUMBER} || true
+                            """
+                            // Archive HTML reports
+                            archiveArtifacts artifacts: 'trivy-*-report.html', fingerprint: true
+                        }
+                    }
+                }
+
+                stage('Docker Push') {
+                    steps {
+                        script {
+                            withDockerRegistry(credentialsId: 'your-docker-credentials') {
+                                sh """
+                                    docker tag ${IMAGE_VOTE}:${BUILD_NUMBER} ${IMAGE_VOTE}:${BUILD_NUMBER}
+                                    docker tag ${IMAGE_RESULT}:${BUILD_NUMBER} ${IMAGE_RESULT}:${BUILD_NUMBER}
+                                    docker tag ${IMAGE_WORKER}:${BUILD_NUMBER} ${IMAGE_WORKER}:${BUILD_NUMBER}
+
+                                    docker push ${IMAGE_VOTE}:${BUILD_NUMBER}
+                                    docker push ${IMAGE_RESULT}:${BUILD_NUMBER}
+                                    docker push ${IMAGE_WORKER}:${BUILD_NUMBER}
+                                """
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // STAGE 7: Push Images
-        stage('Push Docker Images') {
+        stage('Approval Required') {
             steps {
                 script {
-                    echo "📤 Pushing Images to DockerHub..."
-                    projectConfig.dockerImages.each { image ->
-                        pushDockerImage(image.name)
-                    }
+                    mail(
+                        to: "${MAIL_FOR_APPROVAL}",
+                        subject: "Approval Required for Deployment",
+                        body: "Pipeline is waiting for your approval. Please go to Jenkins and click Deploy to continue."
+                    )
+                    input message: 'Do you approve deployment to production?', ok: 'Deploy'
                 }
             }
         }
 
-        // STAGE 8: Deploy (Conditional)
-        stage('Deploy Application') {
-            when {
-                expression { return fileExists('docker-compose.yml') && params.AUTO_DEPLOY }
-            }
+        stage('Deploy using Docker compose') {
             steps {
-                script {
-                    echo "🚀 Deploying Application..."
-                    deployApplication()
-                }
+                sh "IMAGE_VOTE_TAG=${BUILD_NUMBER} IMAGE_RESULT_TAG=${BUILD_NUMBER} IMAGE_WORKER_TAG=${BUILD_NUMBER} docker compose -f docker-compose.yml up -d"
             }
         }
     }
-
+   
     post {
-        always {
-            script {
-                cleanupWorkspace()
-            }
-        }
         success {
             script {
-                sendNotification("SUCCESS")
+                echo "✅ Deployment successful!"
+                mail(
+                    to: "${MAIL_FOR_FAIL_OR_SUCCESSFULL}",
+                    subject: "Build #${BUILD_NUMBER} Successful - ${env.JOB_NAME}",
+                    body: """ 
+Hello Team,
+
+Pipeline has successfully completed!
+
+Build Number: ${BUILD_NUMBER}
+
+Security & Quality Reports:
+- SonarQube: ${SONAR_URL}
+- Trivy Vote Report: ${env.BUILD_URL}artifact/trivy-vote-report.html
+- Trivy Result Report: ${env.BUILD_URL}artifact/trivy-result-report.html
+- Trivy Worker Report: ${env.BUILD_URL}artifact/trivy-worker-report.html
+
+Application Links:
+- Vote App: http://localhost:5000
+- Result App: http://localhost:5001
+
+Best regards,
+Jenkins
+"""
+                )
             }
         }
+
         failure {
             script {
-                sendNotification("FAILED")
+                echo "❌ Deployment failed!"
+                mail(
+                    to: "${MAIL_FOR_FAIL_OR_SUCCESSFULL}",
+                    subject: "Build #${BUILD_NUMBER} Failed - ${env.JOB_NAME}",
+                    body: """ 
+Hello Team,
+
+Pipeline has failed.
+
+Build Number: ${BUILD_NUMBER}
+
+Please check the Jenkins console output for errors.
+
+Best regards,
+Jenkins
+"""
+                )
             }
         }
     }
-}
-
-// =============================================
-// REUSABLE FUNCTIONS
-// =============================================
-
-// Dynamic code download function
-def dynamicDownloadCode(gitRepo) {
-    sh """
-        # Clean workspace
-        rm -rf * .* 2>/dev/null || true
-        
-        # Smart clone - only get what's needed
-        git clone --depth 1 --branch main --single-branch ${gitRepo} .
-        
-        # Remove large binary files that slow down downloads
-        find . -name "*.zip" -o -name "*.rpm" -o -name "*.tgz" -o -name "*.tar.gz" -size +10M -delete 2>/dev/null || true
-        
-        echo "✅ Repository downloaded successfully!"
-        ls -la
-    """
-}
-
-// SonarQube analysis function
-def runSonarQubeAnalysis() {
-    withSonarQubeEnv("SonarQubeServer") {
-        def scannerHome = tool 'SonarQubeScanner'
-        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_AUTH_TOKEN')]) {
-            sh """
-                ${scannerHome}/bin/sonar-scanner \\
-                  -Dsonar.projectKey=${SONAR_PROJECT_KEY} \\
-                  -Dsonar.projectName=${SONAR_PROJECT_NAME} \\
-                  -Dsonar.sources=${SOURCE_DIRS} \\
-                  -Dsonar.login=${SONAR_AUTH_TOKEN} \\
-                  -Dsonar.qualitygate.wait=false
-            """
-        }
-    }
-}
-
-// Quality gate check function
-def checkQualityGate() {
-    timeout(time: 2, unit: 'MINUTES') {
-        waitForQualityGate abortPipeline: false
-    }
-}
-
-// Approval workflow function
-def sendApprovalRequest() {
-    sh "rm -f ${APPROVAL_FILE} || true"
-    
-    mail(
-        to: "${NOTIFICATION_EMAIL}",
-        subject: "🚀 APPROVAL REQUIRED: ${PROJECT_NAME} Build #${BUILD_NUMBER}",
-        body: """
-        BUILD APPROVAL REQUIRED!
-        
-        Project: ${PROJECT_NAME}
-        Build: #${BUILD_NUMBER}
-        URL: ${BUILD_URL}
-        Status: Ready for deployment
-        
-        ✅ TO APPROVE:
-        Run this command on your server:
-        echo "APPROVED" > ${APPROVAL_FILE}
-        
-        ❌ TO REJECT:  
-        Run this command on your server:
-        echo "REJECTED" > ${APPROVAL_FILE}
-        
-        ⏰ Timeout: ${projectConfig.approvalTimeoutMinutes} minutes
-        """
-    )
-    echo "📧 Approval request sent to ${NOTIFICATION_EMAIL}"
-}
-
-def waitForManualApproval() {
-    echo "⏳ Waiting for manual approval..."
-    echo "💡 Run: echo 'APPROVED' > ${APPROVAL_FILE}"
-    
-    timeout(time: projectConfig.approvalTimeoutMinutes, unit: 'MINUTES') {
-        waitUntil {
-            sleep 10
-            if (fileExists(APPROVAL_FILE)) {
-                def status = sh(script: "cat ${APPROVAL_FILE}", returnStdout: true).trim()
-                if (status == "APPROVED") {
-                    echo "🎉 Build approved! Continuing pipeline..."
-                    return true
-                } else if (status == "REJECTED") {
-                    error "❌ Build rejected by approver!"
-                }
-            }
-            echo "⏰ Still waiting for approval... (Run: echo 'APPROVED' > ${APPROVAL_FILE})"
-            return false
-        }
-    }
-}
-
-// Docker build function
-def buildDockerImage(imageName, contextPath) {
-    sh """
-        echo "🔨 Building ${imageName} image..."
-        docker build --progress=plain -t ${imageName}:${BUILD_NUMBER} ${contextPath}
-        echo "✅ ${imageName} image built successfully!"
-    """
-}
-
-// Security scan function  
-def runSecurityScan(imageName) {
-    sh """
-        echo "🔍 Scanning ${imageName}..."
-        trivy image --format table -o trivy-${imageName}.txt ${imageName}:${BUILD_NUMBER} || true
-        echo "✅ ${imageName} security scan completed!"
-    """
-}
-
-// Docker push function
-def pushDockerImage(imageName) {
-    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-        sh """
-            echo "🔐 Logging into DockerHub..."
-            echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin
-            
-            echo "📤 Pushing ${imageName}..."
-            docker tag ${imageName}:${BUILD_NUMBER} ${DOCKERHUB_NAMESPACE}/${imageName}:${BUILD_NUMBER}
-            docker push ${DOCKERHUB_NAMESPACE}/${imageName}:${BUILD_NUMBER}
-            
-            echo "✅ ${imageName} pushed to DockerHub!"
-        """
-    }
-}
-
-// Deploy function
-def deployApplication() {
-    sh """
-        echo "🚀 Deploying application..."
-        docker-compose down || true
-        docker-compose up -d
-        echo "✅ Application deployed successfully!"
-        docker ps
-    """
-}
-
-// Cleanup function
-def cleanupWorkspace() {
-    sh "rm -f ${APPROVAL_FILE} || true"
-    cleanWs()
-}
-
-// Notification function
-def sendNotification(status) {
-    def subject = "Build ${status} - ${PROJECT_NAME} #${BUILD_NUMBER}"
-    def body = """
-    Build ${status}!
-    
-    Project: ${PROJECT_NAME}
-    Build: #${BUILD_NUMBER} 
-    URL: ${BUILD_URL}
-    Status: ${status}
-    
-    -- Jenkins CI/CD
-    """
-    
-    mail(to: "${NOTIFICATION_EMAIL}", subject: subject, body: body)
-    echo "📧 ${status} notification sent to ${NOTIFICATION_EMAIL}"
 }
