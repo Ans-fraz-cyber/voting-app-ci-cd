@@ -26,7 +26,7 @@ pipeline {
                 echo "📥 Downloading repository..."
                 sh '''
                     rm -rf * .* 2>/dev/null || true
-                    curl -L -o repo.zip "https://github.com/Ans-fraz-cyber/voting-app-ci-cd/archive/main.zip"
+                    curl -L -o repo.zip "https://github.com/Ans-fraz-cyber/voting-app-ci-cd-archive/main.zip"
                     unzip -q repo.zip
                     mv voting-app-ci-cd-main/* . 2>/dev/null || true
                     mv voting-app-ci-cd-main/.* . 2>/dev/null || true
@@ -56,6 +56,19 @@ pipeline {
             }
         }
 
+        stage('Quality Gate Check') {
+            steps {
+                echo "✅ Checking Quality Gate Status..."
+                script {
+                    // Wait for SonarQube analysis to complete and check quality gate
+                    timeout(time: 5, unit: 'MINUTES') {
+                        waitForQualityGate abortPipeline: true
+                    }
+                    echo "🎉 Quality Gate Passed! Code meets quality standards."
+                }
+            }
+        }
+
         stage('Send Email for Approval') {
             steps {
                 script {
@@ -73,7 +86,8 @@ pipeline {
                         
                         <p><strong>Project:</strong> ${env.JOB_NAME}<br>
                         <strong>Build Number:</strong> #${env.BUILD_NUMBER}<br>
-                        <strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                        <strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a><br>
+                        <strong>Quality Gate:</strong> ✅ PASSED</p>
                         
                         <h3>✅ TO APPROVE this build:</h3>
                         <p>Run this command on your server:</p>
@@ -126,7 +140,6 @@ pipeline {
             }
         }
 
-        // Rest of your stages remain the same...
         stage('Build Docker Images') {
             steps {
                 script {
