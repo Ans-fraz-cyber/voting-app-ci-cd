@@ -7,10 +7,9 @@ pipeline {
         IMAGE_RESULT = "ansfraz/voting-app-result"
         IMAGE_WORKER = "ansfraz/voting-app-worker"
         DOCKER_BUILDKIT = "1" 
-        SONAR_URL = "http://localhost:9000/dashboard?id=voting-app"
+        SONAR_URL = "http://localhost:9000"
         MAIL_FOR_APPROVAL = "ansfaraz.cyber@gmail.com"
         MAIL_FOR_FAIL_OR_SUCCESSFULL = "ansfaraz.cyber@gmail.com"
-
     }
     stages {
         stage('Checkout') {  
@@ -31,17 +30,29 @@ pipeline {
         stage('SonarQube Quality Analysis') {
             steps {
                 script {
-                    def SONAR_HOME = tool "Sonar"
-                    withSonarQubeEnv("Sonar") {
-                        sh "$SONAR_HOME/bin/sonar-scanner -Dsonar.projectName=voting-app -Dsonar.projectKey=voting-app -Dsonar.exclusions=**/trivy-*.html,**/*.html"
+                    // Option 1: Use direct sonar-scanner (if installed on system)
+                    withSonarQubeEnv('Sonar') {
+                        sh '''
+                            sonar-scanner \
+                            -Dsonar.projectName=voting-app \
+                            -Dsonar.projectKey=voting-app \
+                            -Dsonar.sources=. \
+                            -Dsonar.host.url=http://localhost:9000 \
+                            -Dsonar.login=admin \
+                            -Dsonar.password=admin \
+                            -Dsonar.exclusions=**/trivy-*.html,**/*.html
+                        '''
                     }
+                    
+                    // If the above doesn't work, try this alternative:
+                    // sh 'mvn sonar:sonar -Dsonar.projectKey=voting-app -Dsonar.host.url=http://localhost:9000 -Dsonar.login=admin -Dsonar.password=admin'
                 }
             }
         }
 
         stage('Sonar Quality Gate Scan') {
             steps {
-                timeout(time:10, unit:"MINUTES"){
+                timeout(time: 10, unit: "MINUTES") {
                     waitForQualityGate abortPipeline: true
                 }
             }
@@ -64,13 +75,11 @@ pipeline {
                 stage('Trivy Image Scan') {
                     steps {
                         script {
-                            // Trivy images scan
                             sh """
                                 trivy image --format template --template @trivy-template.html -o trivy-vote-report.html ${IMAGE_VOTE}:${BUILD_NUMBER} || true
                                 trivy image --format template --template @trivy-template.html -o trivy-result-report.html ${IMAGE_RESULT}:${BUILD_NUMBER} || true
                                 trivy image --format template --template @trivy-template.html -o trivy-worker-report.html ${IMAGE_WORKER}:${BUILD_NUMBER} || true
                             """
-                            // Archive HTML reports
                             archiveArtifacts artifacts: 'trivy-*-report.html', fingerprint: true
                         }
                     }
@@ -81,10 +90,6 @@ pipeline {
                         script {
                             withDockerRegistry(credentialsId: 'your-docker-credentials') {
                                 sh """
-                                    docker tag ${IMAGE_VOTE}:${BUILD_NUMBER} ${IMAGE_VOTE}:${BUILD_NUMBER}
-                                    docker tag ${IMAGE_RESULT}:${BUILD_NUMBER} ${IMAGE_RESULT}:${BUILD_NUMBER}
-                                    docker tag ${IMAGE_WORKER}:${BUILD_NUMBER} ${IMAGE_WORKER}:${BUILD_NUMBER}
-
                                     docker push ${IMAGE_VOTE}:${BUILD_NUMBER}
                                     docker push ${IMAGE_RESULT}:${BUILD_NUMBER}
                                     docker push ${IMAGE_WORKER}:${BUILD_NUMBER}
@@ -111,7 +116,7 @@ pipeline {
 
         stage('Deploy using Docker compose') {
             steps {
-                sh "IMAGE_VOTE_TAG=${BUILD_NUMBER} IMAGE_RESULT_TAG=${BUILD_NUMBER} IMAGE_WORKER_TAG=${BUILD_NUMBER} docker compose -f docker-compose.yml up -d"
+                sh "docker compose -f docker-compose.yml up -d"
             }
         }
     }
