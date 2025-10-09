@@ -1,7 +1,6 @@
 version: "3.8"
 
 services:
-  # Postgres DB for voting app
   db:
     image: postgres:15-alpine
     environment:
@@ -13,7 +12,6 @@ services:
     networks:
       - back-tier
 
-  # Redis for voting app
   redis:
     image: redis:7-alpine
     ports:
@@ -21,7 +19,6 @@ services:
     networks:
       - back-tier
 
-  # Vote web app
   vote:
     image: 31793179/voting-app-vote:latest
     ports:
@@ -37,7 +34,6 @@ services:
     depends_on:
       - redis
 
-  # Result web app
   result:
     image: 31793179/voting-app-result:latest
     ports:
@@ -51,7 +47,6 @@ services:
     depends_on:
       - redis
 
-  # Worker
   worker:
     image: 31793179/voting-app-worker:latest
     environment:
@@ -61,6 +56,20 @@ services:
       - back-tier
     depends_on:
       - redis
+
+  sonarqube:
+    image: sonarqube:community
+    container_name: sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      - SONAR_JDBC_URL=jdbc:postgresql://db:5432/postgres
+      - SONAR_JDBC_USERNAME=postgres
+      - SONAR_JDBC_PASSWORD=postgres
+    depends_on:
+      - db
+    networks:
+      - back-tier
 
 networks:
   front-tier:
