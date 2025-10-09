@@ -25,13 +25,29 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and Push Docker Image
+      - name: Build and Push voting-app-worker
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: ./Dockerfile
+          context: ./worker
+          file: ./worker/Dockerfile
           push: true
-          tags: 31793179/voting-app:latest
+          tags: 31793179/voting-app-worker:latest
+
+      - name: Build and Push voting-app-result
+        uses: docker/build-push-action@v6
+        with:
+          context: ./result
+          file: ./result/Dockerfile
+          push: true
+          tags: 31793179/voting-app-result:latest
+
+      - name: Build and Push voting-app-vote
+        uses: docker/build-push-action@v6
+        with:
+          context: ./vote
+          file: ./vote/Dockerfile
+          push: true
+          tags: 31793179/voting-app-vote:latest
 
       - name: Done ✅
-        run: echo "Docker image built and pushed successfully!"
+        run: echo "All Docker images built and pushed successfully!"
