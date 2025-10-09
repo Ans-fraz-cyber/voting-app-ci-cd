@@ -33,7 +33,7 @@ jobs:
           extraArgs: >
             -Dsonar.projectKey=voting-app-ci-cd
             -Dsonar.projectName="Voting App CI/CD"
-            -Dsonar.host.url=http://192.168.18.63:9000
+            -Dsonar.host.url=https://ironfisted-maddison-uncamouflaged.ngrok-free.dev
 
   # ----------------------------
   # 2️⃣ Build & Push Docker Images
