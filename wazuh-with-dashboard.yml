@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  wazuh-indexer:
+    image: wazuh/wazuh-indexer:4.7.2
+    hostname: wazuh-indexer
+    container_name: wazuh-indexer
+    restart: unless-stopped
+    ports:
+      - "9200:9200"
+    environment:
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=SecretPassword
+    volumes:
+      - wazuh_indexer_data:/var/lib/wazuh-indexer
+    networks:
+      - wazuh-net
+
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.7.2
+    hostname: wazuh-manager
+    container_name: wazuh-manager
+    restart: unless-stopped
+    ports:
+      - "1514:1514"
+      - "1515:1515"
+      - "1516:1516"
+      - "55000:55000"
+    environment:
+      - INDEXER_URL=https://wazuh-indexer:9200
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=SecretPassword
+    volumes:
+      - wazuh_manager_data:/var/ossec
+    networks:
+      - wazuh-net
+    depends_on:
+      - wazuh-indexer
+
+  wazuh-dashboard:
+    image: wazuh/wazuh-dashboard:4.7.2
+    hostname: wazuh-dashboard
+    container_name: wazuh-dashboard
+    restart: unless-stopped
+    ports:
+      - "5601:5601"
+    environment:
+      - OPENSEARCH_HOSTS=https://wazuh-indexer:9200
+      - DASHBOARD_USERNAME=admin
+      - DASHBOARD_PASSWORD=SecretPassword
+    networks:
+      - wazuh-net
+    depends_on:
+      - wazuh-indexer
+
+networks:
+  wazuh-net:
+    driver: bridge
+
+volumes:
+  wazuh_indexer_data:
+  wazuh_manager_data:

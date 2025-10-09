@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  wazuh:
+    image: wazuh/wazuh:4.7.2
+    hostname: wazuh
+    container_name: wazuh-all-in-one
+    restart: unless-stopped
+    ports:
+      - "55000:55000"
+      - "1514:1514"
+      - "1515:1515"
+      - "1516:1516"
+      - "514:514/udp"
+      - "5601:5601"
+    environment:
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=SecretPassword
+    volumes:
+      - wazuh_data:/var/lib/wazuh
+    networks:
+      - wazuh-net
+
+networks:
+  wazuh-net:
+    driver: bridge
+
+volumes:
+  wazuh_data:

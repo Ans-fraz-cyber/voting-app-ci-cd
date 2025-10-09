@@ -12,7 +12,6 @@ services:
       - db-data:/var/lib/postgresql/data
     networks:
       - back-tier
-      - wazuh-net
 
   # Redis for voting app
   redis:
@@ -21,7 +20,6 @@ services:
       - "6379:6379"
     networks:
       - back-tier
-      - wazuh-net
 
   # Vote web app
   vote:
@@ -36,7 +34,6 @@ services:
     networks:
       - front-tier
       - back-tier
-      - wazuh-net
 
   # Result web app
   result:
@@ -49,7 +46,6 @@ services:
     networks:
       - front-tier
       - back-tier
-      - wazuh-net
 
   # Worker
   worker:
@@ -59,42 +55,10 @@ services:
       REDIS_PORT: 6379
     networks:
       - back-tier
-      - wazuh-net
-
-  # Wazuh Agent for Vote service
-  wazuh-agent-vote:
-    image: wazuh/wazuh-agent:4.7.2
-    hostname: wazuh-agent-vote
-    environment:
-      - WAZUH_MANAGER=wazuh-manager
-      - WAZUH_AGENT_NAME=vote-app
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - wazuh-net
-    depends_on:
-      - wazuh-manager
-
-  # Wazuh Agent for Result service
-  wazuh-agent-result:
-    image: wazuh/wazuh-agent:4.7.2
-    hostname: wazuh-agent-result
-    environment:
-      - WAZUH_MANAGER=wazuh-manager
-      - WAZUH_AGENT_NAME=result-app
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - wazuh-net
-    depends_on:
-      - wazuh-manager
 
 networks:
   front-tier:
   back-tier:
-  wazuh-net:
-    external: true
-    name: voting-app_wazuh-net
 
 volumes:
   db-data:

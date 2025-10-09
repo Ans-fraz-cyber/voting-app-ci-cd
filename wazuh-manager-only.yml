@@ -1,0 +1,24 @@
+version: '3.8'
+services:
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.7.2
+    container_name: wazuh-manager
+    restart: unless-stopped
+    ports:
+      - "1514:1514"
+      - "1515:1515"
+      - "1516:1516"
+      - "55000:55000"
+    environment:
+      - WAZUH_MANAGER=localhost
+    volumes:
+      - wazuh_data:/var/ossec
+    networks:
+      - wazuh-net
+
+networks:
+  wazuh-net:
+    driver: bridge
+
+volumes:
+  wazuh_data:
