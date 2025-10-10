@@ -20,10 +20,12 @@ jobs:
 
       - name: Install Dependencies
         run: |
+          cd voting-app
           npm install
 
       - name: Run Tests
         run: |
+          cd voting-app
           npm test || echo "Tests failed but continuing..."
 
       - name: SonarQube Scan
@@ -31,6 +33,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
+          cd voting-app
           npx sonar-scanner \
             -Dsonar.projectKey=voting-app \
             -Dsonar.sources=. \
@@ -54,5 +57,6 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
+          cd voting-app
           docker build -t 31793179/voting-app .
           docker push 31793179/voting-app
