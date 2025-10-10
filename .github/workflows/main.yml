@@ -1,145 +1,86 @@
-name: Voting App CI/CD Pipeline
+cd /home/ans-fraz/Downloads/voting-app
 
-# Trigger on push, pull request, or manual run
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:   # ✅ enables manual trigger
+# Create the html.tpl file with the content above
+cat > html.tpl << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Trivy Vulnerability Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #333; border-bottom: 2px solid #007acc; padding-bottom: 10px; }
+        .summary { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .vuln-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .vuln-table th, .vuln-table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        .vuln-table th { background-color: #007acc; color: white; }
+        .critical { background-color: #ffebee; }
+        .high { background-color: #ffcdd2; }
+        .medium { background-color: #fff3e0; }
+        .low { background-color: #e8f5e8; }
+        .severity-critical { color: #d32f2f; font-weight: bold; }
+        .severity-high { color: #f57c00; font-weight: bold; }
+        .severity-medium { color: #fbc02d; font-weight: bold; }
+        .severity-low { color: #388e3c; font-weight: bold; }
+        .target { background: #e3f2fd; padding: 10px; border-radius: 5px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Trivy Vulnerability Report</h1>
+        
+        <div class="summary">
+            <h2>Scan Summary</h2>
+            <p><strong>Image:</strong> {{ .Metadata.ImageID }}</p>
+            <p><strong>Scan Date:</strong> {{ now | formatDate }}</p>
+            <p><strong>Total Vulnerabilities:</strong> {{ len .Results.0.Vulnerabilities }}</p>
+        </div>
 
-jobs:
-  build-and-analyze:
-    runs-on: self-hosted
+        {{ range .Results }}
+        <div class="target">
+            <h2>Target: {{ .Target }}</h2>
+            <p><strong>Type:</strong> {{ .Type }}</p>
+        </div>
 
-    steps:
-      # ---------------------------------------------------------
-      # 1️⃣ Checkout repository
-      # ---------------------------------------------------------
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      # ---------------------------------------------------------
-      # 2️⃣ Setup Node.js
-      # ---------------------------------------------------------
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      # ---------------------------------------------------------
-      # 3️⃣ Fix folder permissions
-      # ---------------------------------------------------------
-      - name: Fix Folder Permissions
-        run: |
-          chmod -R 777 result vote worker || true
-
-      # ---------------------------------------------------------
-      # 4️⃣ Install dependencies (Result App)
-      # ---------------------------------------------------------
-      - name: Install Dependencies (Result App)
-        run: |
-          cd result
-          npm install
-
-      # ---------------------------------------------------------
-      # 5️⃣ Run tests
-      # ---------------------------------------------------------
-      - name: Run Tests
-        run: |
-          cd result
-          npm test || echo "No tests defined, skipping..."
-
-      # ---------------------------------------------------------
-      # 6️⃣ SonarQube Scan
-      # ---------------------------------------------------------
-      - name: SonarQube Scan
-        run: |
-          docker run --rm \
-            --network host \
-            -e SONAR_HOST_URL="http://127.0.0.1:9000" \
-            -e SONAR_TOKEN=${{ secrets.SONAR_TOKEN }} \
-            -v $(pwd)/result:/usr/src:Z \
-            sonarsource/sonar-scanner-cli \
-            -Dsonar.projectKey=voting-app \
-            -Dsonar.sources=. \
-            -Dsonar.host.url=http://127.0.0.1:9000 \
-            -Dsonar.token=${{ secrets.SONAR_TOKEN }}
-
-      # ---------------------------------------------------------
-      # 7️⃣ Wait for SonarQube Quality Gate
-      # ---------------------------------------------------------
-      - name: Wait for SonarQube Quality Gate
-        run: |
-          echo "Waiting for SonarQube Quality Gate..."
-          STATUS=""
-          while [ "$STATUS" != "OK" ] && [ "$STATUS" != "FAILED" ]; do
-            sleep 5
-            STATUS=$(curl -s -u ${{ secrets.SONAR_TOKEN }}: \
-              "http://127.0.0.1:9000/api/qualitygates/project_status?projectKey=voting-app" \
-              | jq -r '.projectStatus.status')
-            echo "Current status: $STATUS"
-          done
-          if [ "$STATUS" != "OK" ]; then
-            echo "❌ SonarQube Quality Gate failed!"
-            exit 1
-          fi
-          echo "✅ Quality Gate passed! Continuing pipeline..."
-
-      # ---------------------------------------------------------
-      # 8️⃣ Build Docker Images
-      # ---------------------------------------------------------
-      - name: Build Docker Images
-        run: |
-          docker build -t 31793179/voting-app-vote:latest ./vote
-          docker build -t 31793179/voting-app-result:latest ./result
-          docker build -t 31793179/voting-app-worker:latest ./worker
-
-      # ---------------------------------------------------------
-      # 9️⃣ Trivy Vulnerability Scan + HTML Reports (FIXED)
-      # ---------------------------------------------------------
-      - name: Scan Docker Images with Trivy
-        run: |
-          mkdir -p trivy-reports
-
-          # Download a proper HTML template from Trivy's GitHub
-          curl -sL -o html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
-
-          # Scan vote image with proper template
-          trivy image --format template --template "./html.tpl" -o trivy-reports/vote.html 31793179/voting-app-vote:latest
-
-          # Scan result image
-          trivy image --format template --template "./html.tpl" -o trivy-reports/result.html 31793179/voting-app-result:latest
-
-          # Scan worker image
-          trivy image --format template --template "./html.tpl" -o trivy-reports/worker.html 31793179/voting-app-worker:latest
-
-          echo "✅ Trivy HTML reports generated successfully!"
-          ls -la trivy-reports/
-
-      # ---------------------------------------------------------
-      # 🔟 Upload Trivy HTML Reports as Artifacts
-      # ---------------------------------------------------------
-      - name: Upload Trivy Reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-reports
-          path: trivy-reports/
-
-      # ---------------------------------------------------------
-      # 11️⃣ Login to DockerHub
-      # ---------------------------------------------------------
-      - name: Login to DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      # ---------------------------------------------------------
-      # 12️⃣ Push Docker Images
-      # ---------------------------------------------------------
-      - name: Push Docker Images
-        run: |
-          docker push 31793179/voting-app-vote:latest
-          docker push 31793179/voting-app-result:latest
-          docker push 31793179/voting-app-worker:latest
+        {{ if .Vulnerabilities }}
+        <table class="vuln-table">
+            <thead>
+                <tr>
+                    <th>Vulnerability ID</th>
+                    <th>Package</th>
+                    <th>Version</th>
+                    <th>Severity</th>
+                    <th>Title</th>
+                    <th>Fixed Version</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{ range .Vulnerabilities }}
+                <tr class="{{ .Severity | toLower }}">
+                    <td><a href="https://nvd.nist.gov/vuln/detail/{{ .VulnerabilityID }}" target="_blank">{{ .VulnerabilityID }}</a></td>
+                    <td>{{ .PkgName }}</td>
+                    <td>{{ .InstalledVersion }}</td>
+                    <td class="severity-{{ .Severity | toLower }}">{{ .Severity }}</td>
+                    <td>{{ .Title }}</td>
+                    <td>
+                        {{ if .FixedVersion }}
+                            {{ .FixedVersion }}
+                        {{ else }}
+                            Not fixed
+                        {{ end }}
+                    </td>
+                </tr>
+                {{ end }}
+            </tbody>
+        </table>
+        {{ else }}
+        <div style="background: #e8f5e8; padding: 20px; border-radius: 5px; text-align: center;">
+            <h3>✅ No Vulnerabilities Found</h3>
+            <p>This image passed the security scan with no vulnerabilities detected.</p>
+        </div>
+        {{ end }}
+        {{ end }}
+    </div>
+</body>
+</html>
+EOF
