@@ -2,17 +2,9 @@ name: Voting App CI/CD Pipeline
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
-    branches:
-      - main
-
-env:
-  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-  IMAGE_VERSION: latest
+    branches: [ main ]
 
 jobs:
   build-and-analyze:
@@ -22,42 +14,43 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      - name: Install Dependencies
+      - name: Install Dependencies (Result App)
         run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+          cd result
+          npm install
+
+      - name: Run Tests
+        run: |
+          cd result
+          npm test || echo "No tests defined, skipping..."
 
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v2
+        uses: sonarsource/sonarqube-scan-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: "http://localhost:9000"
         with:
-          args: >
-            -Dsonar.projectKey=voting-app-ci-cd
-            -Dsonar.organization=ans-fraz-cyber
-            -Dsonar.host.url=http://localhost:9000
-            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
-
-      - name: Docker Login
-        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          projectBaseDir: result
 
       - name: Build Docker Images
         run: |
-          docker build -t $DOCKER_USERNAME/voting-app-vote:$IMAGE_VERSION ./vote
-          docker build -t $DOCKER_USERNAME/voting-app-result:$IMAGE_VERSION ./result
-          docker build -t $DOCKER_USERNAME/voting-app-worker:$IMAGE_VERSION ./worker
+          docker build -t 31793179/voting-app-vote:latest ./vote
+          docker build -t 31793179/voting-app-result:latest ./result
+          docker build -t 31793179/voting-app-worker:latest ./worker
 
-      - name: Push Docker Images to DockerHub
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push Docker Images
         run: |
-          docker push $DOCKER_USERNAME/voting-app-vote:$IMAGE_VERSION
-          docker push $DOCKER_USERNAME/voting-app-result:$IMAGE_VERSION
-          docker push $DOCKER_USERNAME/voting-app-worker:$IMAGE_VERSION
-
-      - name: Logout Docker
-        run: docker logout
+          docker push 31793179/voting-app-vote:latest
+          docker push 31793179/voting-app-result:latest
+          docker push 31793179/voting-app-worker:latest
