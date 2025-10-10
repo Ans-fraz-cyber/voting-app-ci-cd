@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-and-analyze:
-    runs-on: self-hosted  # ✅ use your own runner instead of GitHub-hosted Ubuntu
+    runs-on: self-hosted  # ✅ using your own runner (Fedora)
 
     steps:
       - name: Checkout Repository
@@ -21,9 +21,9 @@ jobs:
 
       - name: Fix Folder Permissions
         run: |
-          sudo chmod -R 777 result
-          sudo chmod -R 777 vote
-          sudo chmod -R 777 worker
+          chmod -R 777 result || true
+          chmod -R 777 vote || true
+          chmod -R 777 worker || true
 
       - name: Install Dependencies (Result App)
         run: |
