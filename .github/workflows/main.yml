@@ -20,14 +20,10 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          cd backend
-          npm install
-          cd ../frontend
           npm install
 
-      - name: Run Backend Tests
+      - name: Run Tests
         run: |
-          cd backend
           npm test || echo "Tests failed but continuing..."
 
       - name: SonarQube Scan
@@ -35,7 +31,6 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
-          cd backend
           npx sonar-scanner \
             -Dsonar.projectKey=voting-app \
             -Dsonar.sources=. \
@@ -57,10 +52,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and Push Docker Images
+      - name: Build and Push Docker Image
         run: |
-          docker build -t 31793179/voting-frontend ./frontend
-          docker build -t 31793179/voting-backend ./backend
-          docker push 31793179/voting-frontend
-          docker push 31793179/voting-backend
-# trigger
+          docker build -t 31793179/voting-app .
+          docker push 31793179/voting-app
