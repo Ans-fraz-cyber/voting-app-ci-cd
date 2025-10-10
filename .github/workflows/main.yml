@@ -1,10 +1,12 @@
 name: Voting App CI/CD Pipeline
 
+# Trigger on push, pull request, or manual run
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:   # ✅ enables manual trigger
 
 jobs:
   build-and-analyze:
@@ -33,7 +35,7 @@ jobs:
           chmod -R 777 result vote worker || true
 
       # ---------------------------------------------------------
-      # 4️⃣ Install dependencies
+      # 4️⃣ Install dependencies (Result App)
       # ---------------------------------------------------------
       - name: Install Dependencies (Result App)
         run: |
@@ -102,19 +104,19 @@ jobs:
 
           # Scan vote image
           trivy image --format template \
-            --template "@contrib/html.tpl" \
+            --template "html.tpl" \
             -o trivy-reports/vote.html \
             31793179/voting-app-vote:latest
 
           # Scan result image
           trivy image --format template \
-            --template "@contrib/html.tpl" \
+            --template "html.tpl" \
             -o trivy-reports/result.html \
             31793179/voting-app-result:latest
 
           # Scan worker image
           trivy image --format template \
-            --template "@contrib/html.tpl" \
+            --template "html.tpl" \
             -o trivy-reports/worker.html \
             31793179/voting-app-worker:latest
 
@@ -128,7 +130,7 @@ jobs:
           path: trivy-reports/
 
       # ---------------------------------------------------------
-      # 11️⃣ Login to DockerHub (v3)
+      # 11️⃣ Login to DockerHub
       # ---------------------------------------------------------
       - name: Login to DockerHub
         uses: docker/login-action@v3
