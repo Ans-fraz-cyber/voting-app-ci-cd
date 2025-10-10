@@ -26,14 +26,14 @@ jobs:
           node-version: '18'
 
       # ---------------------------------------------------------
-      # 3️⃣ Fix folder permissions (Fedora + SELinux friendly)
+      # 3️⃣ Fix folder permissions
       # ---------------------------------------------------------
       - name: Fix Folder Permissions
         run: |
           chmod -R 777 result vote worker || true
 
       # ---------------------------------------------------------
-      # 4️⃣ Install dependencies (Result app)
+      # 4️⃣ Install dependencies
       # ---------------------------------------------------------
       - name: Install Dependencies (Result App)
         run: |
@@ -49,7 +49,7 @@ jobs:
           npm test || echo "No tests defined, skipping..."
 
       # ---------------------------------------------------------
-      # 6️⃣ SonarQube Scan via Docker
+      # 6️⃣ SonarQube Scan
       # ---------------------------------------------------------
       - name: SonarQube Scan
         run: |
@@ -71,7 +71,6 @@ jobs:
         run: |
           echo "Waiting for SonarQube Quality Gate..."
           STATUS=""
-          # Poll until analysis is processed
           while [ "$STATUS" != "OK" ] && [ "$STATUS" != "FAILED" ]; do
             sleep 5
             STATUS=$(curl -s -u ${{ secrets.SONAR_TOKEN }}: \
@@ -95,7 +94,41 @@ jobs:
           docker build -t 31793179/voting-app-worker:latest ./worker
 
       # ---------------------------------------------------------
-      # 9️⃣ Login to DockerHub
+      # 9️⃣ Trivy Vulnerability Scan + HTML Reports
+      # ---------------------------------------------------------
+      - name: Scan Docker Images with Trivy
+        run: |
+          mkdir -p trivy-reports
+
+          # Scan vote image
+          trivy image --format template \
+            --template "@contrib/html.tpl" \
+            -o trivy-reports/vote.html \
+            31793179/voting-app-vote:latest
+
+          # Scan result image
+          trivy image --format template \
+            --template "@contrib/html.tpl" \
+            -o trivy-reports/result.html \
+            31793179/voting-app-result:latest
+
+          # Scan worker image
+          trivy image --format template \
+            --template "@contrib/html.tpl" \
+            -o trivy-reports/worker.html \
+            31793179/voting-app-worker:latest
+
+      # ---------------------------------------------------------
+      # 🔟 Upload Trivy HTML Reports as Artifacts
+      # ---------------------------------------------------------
+      - name: Upload Trivy Reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: trivy-reports
+          path: trivy-reports/
+
+      # ---------------------------------------------------------
+      # 11️⃣ Login to DockerHub
       # ---------------------------------------------------------
       - name: Login to DockerHub
         uses: docker/login-action@v3
@@ -104,7 +137,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       # ---------------------------------------------------------
-      # 🔟 Push Docker Images
+      # 12️⃣ Push Docker Images
       # ---------------------------------------------------------
       - name: Push Docker Images
         run: |
