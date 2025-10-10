@@ -104,19 +104,19 @@ jobs:
 
           # Scan vote image
           trivy image --format template \
-            --template "html.tpl" \
+            --template "@contrib/html.tpl" \
             -o trivy-reports/vote.html \
             31793179/voting-app-vote:latest
 
           # Scan result image
           trivy image --format template \
-            --template "html.tpl" \
+            --template "@contrib/html.tpl" \
             -o trivy-reports/result.html \
             31793179/voting-app-result:latest
 
           # Scan worker image
           trivy image --format template \
-            --template "html.tpl" \
+            --template "@contrib/html.tpl" \
             -o trivy-reports/worker.html \
             31793179/voting-app-worker:latest
 
