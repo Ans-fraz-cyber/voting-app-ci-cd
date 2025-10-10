@@ -8,17 +8,17 @@ on:
 
 jobs:
   build-and-analyze:
-    runs-on: self-hosted  # ✅ Your Fedora self-hosted GitHub runner
+    runs-on: self-hosted
 
     steps:
       # ---------------------------------------------------------
-      # 1️⃣ Checkout your repository
+      # 1️⃣ Checkout repository
       # ---------------------------------------------------------
       - name: Checkout Repository
         uses: actions/checkout@v4
 
       # ---------------------------------------------------------
-      # 2️⃣ Setup Node.js environment
+      # 2️⃣ Setup Node.js
       # ---------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -26,7 +26,7 @@ jobs:
           node-version: '18'
 
       # ---------------------------------------------------------
-      # 3️⃣ Fix folder permissions (important for Fedora + Docker)
+      # 3️⃣ Fix folder permissions (Fedora + SELinux friendly)
       # ---------------------------------------------------------
       - name: Fix Folder Permissions
         run: |
@@ -41,7 +41,7 @@ jobs:
           npm install
 
       # ---------------------------------------------------------
-      # 5️⃣ Run tests (skip gracefully if none exist)
+      # 5️⃣ Run tests
       # ---------------------------------------------------------
       - name: Run Tests
         run: |
@@ -49,9 +49,9 @@ jobs:
           npm test || echo "No tests defined, skipping..."
 
       # ---------------------------------------------------------
-      # 6️⃣ SonarQube Static Code Analysis via Docker
+      # 6️⃣ SonarQube Scan via Docker
       # ---------------------------------------------------------
-      - name: SonarQube Scan (via Docker)
+      - name: SonarQube Scan
         run: |
           docker run --rm \
             --network host \
@@ -65,7 +65,28 @@ jobs:
             -Dsonar.token=${{ secrets.SONAR_TOKEN }}
 
       # ---------------------------------------------------------
-      # 7️⃣ Build Docker Images for each microservice
+      # 7️⃣ Wait for SonarQube Quality Gate
+      # ---------------------------------------------------------
+      - name: Wait for SonarQube Quality Gate
+        run: |
+          echo "Waiting for SonarQube Quality Gate..."
+          STATUS=""
+          # Poll until analysis is processed
+          while [ "$STATUS" != "OK" ] && [ "$STATUS" != "FAILED" ]; do
+            sleep 5
+            STATUS=$(curl -s -u ${{ secrets.SONAR_TOKEN }}: \
+              "http://127.0.0.1:9000/api/qualitygates/project_status?projectKey=voting-app" \
+              | jq -r '.projectStatus.status')
+            echo "Current status: $STATUS"
+          done
+          if [ "$STATUS" != "OK" ]; then
+            echo "❌ SonarQube Quality Gate failed!"
+            exit 1
+          fi
+          echo "✅ Quality Gate passed! Continuing pipeline..."
+
+      # ---------------------------------------------------------
+      # 8️⃣ Build Docker Images
       # ---------------------------------------------------------
       - name: Build Docker Images
         run: |
@@ -74,7 +95,7 @@ jobs:
           docker build -t 31793179/voting-app-worker:latest ./worker
 
       # ---------------------------------------------------------
-      # 8️⃣ Login to DockerHub using GitHub Secrets
+      # 9️⃣ Login to DockerHub
       # ---------------------------------------------------------
       - name: Login to DockerHub
         uses: docker/login-action@v3
@@ -83,7 +104,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       # ---------------------------------------------------------
-      # 9️⃣ Push the built Docker images to DockerHub
+      # 🔟 Push Docker Images
       # ---------------------------------------------------------
       - name: Push Docker Images
         run: |
