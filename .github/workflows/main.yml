@@ -63,3 +63,4 @@ jobs:
           docker build -t 31793179/voting-backend ./backend
           docker push 31793179/voting-frontend
           docker push 31793179/voting-backend
+# trigger
