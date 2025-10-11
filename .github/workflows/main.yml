@@ -36,6 +36,7 @@ jobs:
 
       - name: SonarQube Scan
         run: |
+          echo "🔍 Starting SonarQube Scan..."
           docker run --rm \
             --network host \
             -e SONAR_HOST_URL="http://127.0.0.1:9000" \
@@ -49,20 +50,39 @@ jobs:
 
       - name: Wait for SonarQube Quality Gate
         run: |
-          echo "Waiting for SonarQube Quality Gate..."
-          STATUS=""
-          while [ "$STATUS" != "OK" ] && [ "$STATUS" != "FAILED" ]; do
-            sleep 5
-            STATUS=$(curl -s -u ${{ secrets.SONAR_TOKEN }}: \
-              "http://127.0.0.1:9000/api/qualitygates/project_status?projectKey=voting-app" \
-              | jq -r '.projectStatus.status')
-            echo "Current status: $STATUS"
+          echo "⏳ Waiting for SonarQube Quality Gate..."
+          max_attempts=12
+          attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+            echo "Attempt $attempt of $max_attempts..."
+            response=$(curl -s -w "%{http_code}" -u ${{ secrets.SONAR_TOKEN }}: \
+              "http://127.0.0.1:9000/api/qualitygates/project_status?projectKey=voting-app") || true
+            
+            status_code="${response: -3}"
+            json_response="${response%???}"
+            
+            if [ "$status_code" = "200" ]; then
+              STATUS=$(echo "$json_response" | jq -r '.projectStatus.status  // "UNKNOWN"')
+              echo "Quality Gate Status: $STATUS"
+              
+              if [ "$STATUS" = "OK" ]; then
+                echo "✅ Quality Gate PASSED!"
+                exit 0
+              elif [ "$STATUS" = "ERROR" ]; then
+                echo "❌ Quality Gate FAILED!"
+                exit 1
+              fi
+            else
+              echo "⚠️ SonarQube API returned HTTP $status_code, retrying..."
+            fi
+            
+            sleep 10
+            attempt=$((attempt + 1))
           done
-          if [ "$STATUS" != "OK" ]; then
-            echo "❌ SonarQube Quality Gate failed!"
-            exit 1
-          fi
-          echo "✅ Quality Gate passed! Continuing pipeline..."
+          
+          echo "❌ SonarQube Quality Gate check timeout after $max_attempts attempts"
+          exit 1
 
       - name: Build Docker Images
         run: |
@@ -92,12 +112,11 @@ jobs:
           docker push 31793179/voting-app-result:latest
           docker push 31793179/voting-app-worker:latest
 
-      # 🚀 AUTO-DEPLOYMENT STAGE (FIXED - HANDLES CONTAINER CONFLICTS)
       - name: Deploy Application
         run: |
           echo "🚀 Starting Auto-Deployment..."
           
-          # Stop any old voting app containers that might conflict
+          # Stop any old containers
           docker stop voting-app-vote-1 voting-app-result-1 voting-app-worker-1 voting-app-db-1 voting-app-redis-1 2>/dev/null || true
           docker rm voting-app-vote-1 voting-app-result-1 voting-app-worker-1 voting-app-db-1 voting-app-redis-1 2>/dev/null || true
           
@@ -106,26 +125,22 @@ jobs:
           docker pull 31793179/voting-app-result:latest
           docker pull 31793179/voting-app-worker:latest
           
-          # Deploy using production compose file
+          # Deploy
           docker-compose -f docker-compose.prod.yml down 2>/dev/null || true
           docker-compose -f docker-compose.prod.yml up -d
           
-          # Wait for services to start
-          echo "⏳ Waiting for services to start..."
+          # Wait and verify
           sleep 20
-          
-          # Verify deployment
-          echo "📊 Checking deployed services:"
+          echo "📊 Deployed Services:"
           docker-compose -f docker-compose.prod.yml ps
           
-          # Test if applications are accessible
-          echo "🔍 Testing application accessibility..."
-          curl -f http://localhost:5080 && echo "✅ Vote app is accessible" || echo "❌ Vote app failed"
-          curl -f http://localhost:5001 && echo "✅ Result app is accessible" || echo "❌ Result app failed"
+          # Test accessibility
+          echo "🔍 Testing applications..."
+          timeout 10s bash -c 'until curl -f http://localhost:5080; do sleep 2; done' && echo "✅ Vote app accessible" || echo "⚠️ Vote app starting..."
+          timeout 10s bash -c 'until curl -f http://localhost:5001; do sleep 2; done' && echo "✅ Result app accessible" || echo "⚠️ Result app starting..."
           
-          # Get public IP for access
           PUBLIC_IP=$(curl -s ifconfig.me)
-          echo "✅ Deployment Completed Successfully!"
+          echo "🎉 DEPLOYMENT COMPLETE!"
           echo "🌐 Vote App: http://$PUBLIC_IP:5080"
           echo "📊 Result App: http://$PUBLIC_IP:5001"
-          echo "🔍 SonarQube: http://$PUBLIC_IP:9000 (running separately)"
+          echo "🔍 SonarQube: http://$PUBLIC_IP:9000"
