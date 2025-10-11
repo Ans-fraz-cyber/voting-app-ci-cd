@@ -92,26 +92,36 @@ jobs:
           docker push 31793179/voting-app-result:latest
           docker push 31793179/voting-app-worker:latest
 
-      # 🚀 AUTO-DEPLOYMENT STAGE (USING PROD FILE)
+      # 🚀 AUTO-DEPLOYMENT STAGE (FIXED - HANDLES CONTAINER CONFLICTS)
       - name: Deploy Application
         run: |
           echo "🚀 Starting Auto-Deployment..."
+          
+          # Stop any old voting app containers that might conflict
+          docker stop voting-app-vote-1 voting-app-result-1 voting-app-worker-1 voting-app-db-1 voting-app-redis-1 2>/dev/null || true
+          docker rm voting-app-vote-1 voting-app-result-1 voting-app-worker-1 voting-app-db-1 voting-app-redis-1 2>/dev/null || true
           
           # Pull latest images
           docker pull 31793179/voting-app-vote:latest
           docker pull 31793179/voting-app-result:latest
           docker pull 31793179/voting-app-worker:latest
           
-          # Deploy using production compose file (without SonarQube)
-          docker-compose -f docker-compose.prod.yml down
+          # Deploy using production compose file
+          docker-compose -f docker-compose.prod.yml down 2>/dev/null || true
           docker-compose -f docker-compose.prod.yml up -d
           
           # Wait for services to start
-          sleep 15
+          echo "⏳ Waiting for services to start..."
+          sleep 20
           
           # Verify deployment
           echo "📊 Checking deployed services:"
           docker-compose -f docker-compose.prod.yml ps
+          
+          # Test if applications are accessible
+          echo "🔍 Testing application accessibility..."
+          curl -f http://localhost:5080 && echo "✅ Vote app is accessible" || echo "❌ Vote app failed"
+          curl -f http://localhost:5001 && echo "✅ Result app is accessible" || echo "❌ Result app failed"
           
           # Get public IP for access
           PUBLIC_IP=$(curl -s ifconfig.me)
