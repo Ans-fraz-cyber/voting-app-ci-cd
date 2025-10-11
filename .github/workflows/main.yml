@@ -91,3 +91,31 @@ jobs:
           docker push 31793179/voting-app-vote:latest
           docker push 31793179/voting-app-result:latest
           docker push 31793179/voting-app-worker:latest
+
+      # 🚀 NEW: AUTO-DEPLOYMENT STAGE
+      - name: Deploy Application
+        run: |
+          echo "🚀 Starting Auto-Deployment..."
+          
+          # Pull latest images (they're already built and pushed)
+          docker pull 31793179/voting-app-vote:latest
+          docker pull 31793179/voting-app-result:latest
+          docker pull 31793179/voting-app-worker:latest
+          
+          # Redeploy with latest images
+          docker-compose down
+          docker-compose up -d
+          
+          # Wait for services to start
+          sleep 15
+          
+          # Verify deployment
+          echo "📊 Checking deployed services:"
+          docker-compose ps
+          
+          # Get public IP for access
+          PUBLIC_IP=$(curl -s ifconfig.me)
+          echo "✅ Deployment Completed Successfully!"
+          echo "🌐 Vote App: http://$PUBLIC_IP:5080"
+          echo "📊 Result App: http://$PUBLIC_IP:5001"
+          echo "🔍 SonarQube: http://$PUBLIC_IP:9000"
