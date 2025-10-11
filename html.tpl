@@ -1,81 +1,100 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Trivy Vulnerability Report</title>
+    <title>Trivy Security Scan Report</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
-        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        h1 { color: #333; border-bottom: 2px solid #007acc; padding-bottom: 10px; }
-        .summary { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; }
-        .vuln-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-        .vuln-table th, .vuln-table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        .vuln-table th { background-color: #007acc; color: white; }
-        .critical { background-color: #ffebee; }
-        .high { background-color: #ffcdd2; }
-        .medium { background-color: #fff3e0; }
-        .low { background-color: #e8f5e8; }
-        .severity-critical { color: #d32f2f; font-weight: bold; }
-        .severity-high { color: #f57c00; font-weight: bold; }
-        .severity-medium { color: #fbc02d; font-weight: bold; }
-        .severity-low { color: #388e3c; font-weight: bold; }
-        .target { background: #e3f2fd; padding: 10px; border-radius: 5px; margin: 10px 0; }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .header { background: #2c3e50; color: white; padding: 20px; border-radius: 5px; }
+        .vulnerability { border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 5px; }
+        .critical { border-left: 5px solid #e74c3c; }
+        .high { border-left: 5px solid #e67e22; }
+        .medium { border-left: 5px solid #f39c12; }
+        .low { border-left: 5px solid #27ae60; }
+        .unknown { border-left: 5px solid #95a5a6; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #34495e; color: white; }
+        .summary { background: #ecf0f1; padding: 15px; border-radius: 5px; margin: 20px 0; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🔍 Trivy Vulnerability Report</h1>
-        
+    <div class="header">
+        <h1>🛡️ Trivy Vulnerability Report</h1>
+        <p>Generated on: {{ now }}</p>
+    </div>
+
+    {{ if .Results }}
+        {{ $vulnCount := 0 }}
+        {{ range .Results }}
+            {{ $vulnCount = add $vulnCount (len .Vulnerabilities) }}
+        {{ end }}
+
         <div class="summary">
             <h2>Scan Summary</h2>
-            <p><strong>Image:</strong> {{ .Metadata.ImageID }}</p>
-            <p><strong>Scan Date:</strong> {{ now | formatDate }}</p>
-            <p><strong>Total Vulnerabilities:</strong> {{ len .Results.0.Vulnerabilities }}</p>
+            <p><strong>Target:</strong> {{ .Metadata.ImageID }}</p>
+            <p><strong>Total Vulnerabilities Found:</strong> {{ $vulnCount }}</p>
+            <p><strong>Scanner:</strong> Trivy {{ .Metadata.Scanner.Version }}</p>
         </div>
 
         {{ range .Results }}
-        <div class="target">
-            <h2>Target: {{ .Target }}</h2>
-            <p><strong>Type:</strong> {{ .Type }}</p>
-        </div>
-
-        {{ if .Vulnerabilities }}
-        <table class="vuln-table">
-            <thead>
-                <tr>
-                    <th>Vulnerability ID</th>
-                    <th>Package</th>
-                    <th>Version</th>
-                    <th>Severity</th>
-                    <th>Title</th>
-                    <th>Fixed Version</th>
-                </tr>
-            </thead>
-            <tbody>
-                {{ range .Vulnerabilities }}
-                <tr class="{{ .Severity | toLower }}">
-                    <td><a href="https://nvd.nist.gov/vuln/detail/{{ .VulnerabilityID }}" target="_blank">{{ .VulnerabilityID }}</a></td>
-                    <td>{{ .PkgName }}</td>
-                    <td>{{ .InstalledVersion }}</td>
-                    <td class="severity-{{ .Severity | toLower }}">{{ .Severity }}</td>
-                    <td>{{ .Title }}</td>
-                    <td>
-                        {{ if .FixedVersion }}
-                            {{ .FixedVersion }}
-                        {{ else }}
-                            Not fixed
+            <h2>🔍 Target: {{ .Target }} ({{ .Type }})</h2>
+            
+            {{ if .Vulnerabilities }}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Vulnerability ID</th>
+                            <th>Package</th>
+                            <th>Version</th>
+                            <th>Severity</th>
+                            <th>Fixed Version</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{ range .Vulnerabilities }}
+                        <tr class="{{ .Severity | lower }}">
+                            <td><strong>{{ .VulnerabilityID }}</strong></td>
+                            <td>{{ .PkgName }}</td>
+                            <td>{{ .InstalledVersion }}</td>
+                            <td>
+                                <span style="color: 
+                                    {{ if eq .Severity "CRITICAL" }}#e74c3c
+                                    {{ else if eq .Severity "HIGH" }}#e67e22
+                                    {{ else if eq .Severity "MEDIUM" }}#f39c12
+                                    {{ else if eq .Severity "LOW" }}#27ae60
+                                    {{ else }}#95a5a6{{ end }}; font-weight: bold;">
+                                    {{ .Severity }}
+                                </span>
+                            </td>
+                            <td>
+                                {{ if .FixedVersion }}
+                                    {{ .FixedVersion }}
+                                {{ else }}
+                                    <span style="color: #7f8c8d;">Not fixed</span>
+                                {{ end }}
+                            </td>
+                            <td>{{ .Title }}</td>
+                        </tr>
                         {{ end }}
-                    </td>
-                </tr>
-                {{ end }}
-            </tbody>
-        </table>
-        {{ else }}
-        <div style="background: #e8f5e8; padding: 20px; border-radius: 5px; text-align: center;">
-            <h3>✅ No Vulnerabilities Found</h3>
-            <p>This image passed the security scan with no vulnerabilities detected.</p>
+                    </tbody>
+                </table>
+            {{ else }}
+                <div style="background: #d4edda; color: #155724; padding: 20px; border-radius: 5px; text-align: center;">
+                    <h3>✅ No Vulnerabilities Found!</h3>
+                    <p>This image passed the security scan with no vulnerabilities detected.</p>
+                </div>
+            {{ end }}
+        {{ end }}
+    {{ else }}
+        <div style="background: #f8d7da; color: #721c24; padding: 20px; border-radius: 5px; text-align: center;">
+            <h3>❌ Scan Failed or No Results</h3>
+            <p>Unable to generate vulnerability report. Please check the scan logs.</p>
         </div>
-        {{ end }}
-        {{ end }}
+    {{ end }}
+
+    <div style="margin-top: 30px; padding: 15px; background: #bdc3c7; border-radius: 5px; text-align: center;">
+        <p><strong>Report generated by Trivy</strong> | <a href="https://github.com/aquasecurity/trivy" target="_blank">Trivy GitHub</a></p>
     </div>
 </body>
 </html>
