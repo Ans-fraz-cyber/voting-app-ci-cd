@@ -1,0 +1,66 @@
+# docker-compose.prod.yml
+version: "3.8"
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "postgres"
+      POSTGRES_DB: "postgres"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - back-tier
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - back-tier
+
+  vote:
+    image: 31793179/voting-app-vote:latest
+    ports:
+      - "5080:80"
+    environment:
+      OPTION_A: "Cats"
+      OPTION_B: "Dogs"
+      REDIS_HOST: "redis"
+      REDIS_PORT: 6379
+    networks:
+      - front-tier
+      - back-tier
+    depends_on:
+      - redis
+
+  result:
+    image: 31793179/voting-app-result:latest
+    ports:
+      - "5001:80"
+    environment:
+      REDIS_HOST: "redis"
+      REDIS_PORT: 6379
+    networks:
+      - front-tier
+      - back-tier
+    depends_on:
+      - redis
+
+  worker:
+    image: 31793179/voting-app-worker:latest
+    environment:
+      REDIS_HOST: "redis"
+      REDIS_PORT: 6379
+    networks:
+      - back-tier
+    depends_on:
+      - redis
+
+networks:
+  front-tier:
+  back-tier:
+
+volumes:
+  db-data:
