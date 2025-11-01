@@ -95,7 +95,7 @@ jobs:
           python3 generate_trivy_report.py
 
       - name: Upload Trivy Reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: trivy-reports
           path: trivy-reports/
